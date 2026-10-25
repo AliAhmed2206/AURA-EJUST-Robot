@@ -278,7 +278,7 @@ const bridgeBase = () => {
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     return (location.protocol + '//' + location.host).replace(/\/+$/, '');
   }
-  return 'https://lucky-owl-6.loca.lt';
+  return 'https://drawing-garlic-resulted-pos.trycloudflare.com';
 };
 const TUNNEL_HEADERS = { 'Bypass-Tunnel-Reminder': 'true' };
 
@@ -1889,6 +1889,38 @@ async function handleTurn(userText, context) {
   }
 
   // Trigger physical arm wave on ESP32 when guest asks AURA to wave
+  // Instant Emotional Expression Commands (Zero Lag)
+  if (/\b(be sad|act sad|look sad|get sad|خليكي حزينة|ازعلي|كوني حزينة)\b/i.test(userText)) {
+    const ar = isArabic(userText);
+    const t = ar ? 'حاضر.. زعلت اهو! بس يا رب أكون برسم البسمة على وشك بعدين.' : "Oh no, why would you want me to be sad? But okay, here is my sad face.";
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'SAD', { holdAfter: 4000 });
+  }
+  if (/\b(be happy|smile|look happy|be glad|خليكي مبسوطة|افرحي|ابتسمي|اضحكي)\b/i.test(userText)) {
+    const ar = isArabic(userText);
+    const t = ar ? 'دايماً مبسوطة وفرحانة بوجودي معاكم في إيجست!' : "I am always delighted and so happy to meet you at E-JUST!";
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'HAPPY', { holdAfter: 3500 });
+  }
+  if (/\b(wink|blink at me|غمزي|اغمزي)\b/i.test(userText)) {
+    const ar = isArabic(userText);
+    const t = ar ? 'أحلى غمزة لعيونك!' : "Winking right back at you!";
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'WINK', { holdAfter: 3000 });
+  }
+  if (/\b(be surprised|act surprised|look surprised|اتفاجئي|اتخضي)\b/i.test(userText)) {
+    const ar = isArabic(userText);
+    const t = ar ? 'يا خبر! اتفاجئت بجد!' : "Oh wow! You really caught me by surprise!";
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'SURPRISED', { holdAfter: 3500 });
+  }
+  if (/\b(show love|be in love|بحبك|حبيتك)\b/i.test(userText)) {
+    const ar = isArabic(userText);
+    const t = ar ? 'تسلملي يا رب! وأنا بحب كل ضيوف القمة في إيجست!' : "Aww, thank you! Sending you lots of love from E-JUST!";
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'LOVE', { holdAfter: 3500 });
+  }
+
   if (WAVE_RE.test(userText)) {
     sendBle({ cmd: 'WAVE' });
   }
