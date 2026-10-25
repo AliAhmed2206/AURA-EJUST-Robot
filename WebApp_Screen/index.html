@@ -1179,6 +1179,28 @@ let audioCtx = null, analyser = null, outGain = null, analyserBuf = null, curren
 let speechId = 0, isSpeaking = false, currentReply = '', spokenSoFar = '', lastSpeechEnd = 0;
 const audioBufferCache = new Map();
 
+let micDSPActive = false;
+async function initHardwareNoiseSuppression() {
+  if (micDSPActive) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: { ideal: true },
+        noiseSuppression: { ideal: true },
+        autoGainControl: { ideal: true },
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 48000 }
+      }
+    });
+    micDSPActive = true;
+    window._auraMicStream = stream;
+    log('[AUDIO-DSP] Hardware beamforming noise suppression & acoustic echo cancellation active');
+  } catch (e) {
+    log('[AUDIO-DSP] Note on hardware mic constraints:', e.message);
+  }
+}
+
 function ensureAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -1190,6 +1212,7 @@ function ensureAudio() {
     outGain.connect(audioCtx.destination);
   }
   if (audioCtx.state === 'suspended') audioCtx.resume();
+  initHardwareNoiseSuppression();
 }
 (function meter() {
   if (analyser && currentSource) {
@@ -1664,6 +1687,21 @@ function commitUserUtterance(text) {
   handleTurn(text, ctxNote);
 }
 
+function isDirectVoiceCommand(text) {
+  if (!text) return false;
+  return HARD_STOP_RE.test(text) ||
+         PAUSE_ESCORT_RE.test(text) ||
+         RESUME_ESCORT_RE.test(text) ||
+         MOVE_FWD_RE.test(text) ||
+         MOVE_REV_RE.test(text) ||
+         TURN_RIGHT_RE.test(text) ||
+         TURN_LEFT_RE.test(text) ||
+         TURN_AROUND_RE.test(text) ||
+         HALL_RE.test(text);
+}
+
+let interimCommitTimer = null;
+
 function initRecognition() {
   if (!SR) { notice('Speech recognition is not supported here. Use Chrome on Android.', 0); return; }
   if (rec) { try { rec.abort(); } catch (e) {} }
@@ -1677,6 +1715,7 @@ function initRecognition() {
   rec.onstart = () => {
     recRunning = true;
     lastInterim = '';
+    clearTimeout(interimCommitTimer);
     recTaintedBySpeaker = isSpeaking || (performance.now() - lastSpeechEnd < 450);
   };
 
@@ -1697,6 +1736,7 @@ function initRecognition() {
     if (isSpeaking || recTaintedBySpeaker || (performance.now() - lastSpeechEnd < 650)) {
       recTaintedBySpeaker = true;
       lastInterim = '';
+      clearTimeout(interimCommitTimer);
       if (STRICT_BARGE_RE.test(rawHeard)) {
         bargeIn();
       }
@@ -1707,20 +1747,52 @@ function initRecognition() {
       setEmotion('LISTENING', 4000);
     }
 
+    // --- TIER 1: INSTANT COMMAND FAST-PATH (Zero Lag) ---
+    // If a motion or stop command is detected in interim speech, execute IMMEDIATELY without waiting for silence!
+    if (isDirectVoiceCommand(rawHeard)) {
+      clearTimeout(interimCommitTimer);
+      lastInterim = '';
+      try { rec.abort(); } catch (e) {}
+      caption(rawHeard, true);
+      commitUserUtterance(rawHeard);
+      return;
+    }
+
+    // --- TIER 2: FINAL RESULT COMMIT ---
     if (final.trim()) {
+      clearTimeout(interimCommitTimer);
       const cleanFinal = final.trim();
       lastInterim = '';
       caption(cleanFinal, true);
       commitUserUtterance(cleanFinal);
-    } else {
-      lastInterim = interim.trim();
-      caption(lastInterim + ' …', true);
+      return;
+    }
+
+    // --- TIER 3: ADAPTIVE NOISE INTERIM COMMITTER ---
+    // In noisy halls, Google's cloud STT hangs for 4-8 seconds waiting for silence.
+    // If interim speech remains unchanged for 650ms, the user has finished speaking!
+    lastInterim = interim.trim();
+    caption(lastInterim + ' …', true);
+
+    clearTimeout(interimCommitTimer);
+    if (lastInterim && lastInterim.length >= 3) {
+      interimCommitTimer = setTimeout(() => {
+        if (!isSpeaking && !recTaintedBySpeaker && (performance.now() - lastSpeechEnd >= 650) && lastInterim && lastInterim.trim().length >= 3) {
+          log('[NOISE-ADAPTIVE] Fast-committing stable speech in noisy hall:', lastInterim);
+          const toSend = lastInterim.trim();
+          lastInterim = '';
+          try { rec.abort(); } catch (e) {}
+          caption(toSend, true);
+          commitUserUtterance(toSend);
+        }
+      }, 650);
     }
   };
 
   rec.onerror = (e) => {
     recRunning = false;
     lastInterim = '';
+    clearTimeout(interimCommitTimer);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
       notice('Microphone blocked. Allow mic access and open the HTTPS link.', 0);
       awake = false;
@@ -1733,6 +1805,7 @@ function initRecognition() {
 
   rec.onend = () => {
     recRunning = false;
+    clearTimeout(interimCommitTimer);
     // Only commit leftover interim speech if the session was 100% untainted by AURA's speaker
     if (!recTaintedBySpeaker && !isSpeaking && (performance.now() - lastSpeechEnd >= 650) && lastInterim && lastInterim.trim().length >= 2) {
       const toSend = lastInterim.trim();
