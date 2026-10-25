@@ -1,0 +1,12 @@
+CAD/
+STL_3D_Print_Files/
+Firmware/
+Verification_Artifacts/
+WebApp_Screen/
+*.zip
+*.mp3
+*.log
+*.py
+*.bat
+*.ps1
+.git/

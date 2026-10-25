@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "name": "aura-ejust",
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
