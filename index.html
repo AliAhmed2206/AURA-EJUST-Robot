@@ -249,7 +249,7 @@ const store = {
 const urlStyle = new URLSearchParams(location.search).get('style');
 const cfg = {
   style: urlStyle || store.get('style_default_v2', 'nordic'),
-  provider: store.get('provider', 'gemini'),
+  provider: store.get('provider', 'relay'),
   geminiKey: store.get('geminiKey', ''),
   geminiModel: store.get('geminiModel', 'gemini-2.0-flash'),
   bridge: store.get('bridge', ''),
@@ -261,10 +261,20 @@ const cfg = {
   brows: store.get('brows', '1') === '1',
   camPrev: store.get('camPrev', '0') === '1',
 };
+// Default to Antigravity PC Pro Bridge if user has not set a custom provider
+if (cfg.provider !== 'openrouter' && !cfg.geminiKey) {
+  cfg.provider = 'relay';
+}
 function setFaceStyle(s) { cfg.style = s; store.set('style_default_v2', s); }
 window.setFaceStyle = setFaceStyle;
-const hasBridge = () => Boolean(cfg.bridge || (location.protocol === 'http:' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1')));
-const bridgeBase = () => (cfg.bridge || (location.protocol === 'http:' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? location.origin : '')).replace(/\/+$/, '');
+const hasBridge = () => true;
+const bridgeBase = () => {
+  if (cfg.bridge && cfg.bridge.trim()) return cfg.bridge.trim().replace(/\/+$/, '');
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    return (location.protocol + '//' + location.host).replace(/\/+$/, '');
+  }
+  return 'https://lucky-owl-6.loca.lt';
+};
 const TUNNEL_HEADERS = { 'Bypass-Tunnel-Reminder': 'true' };
 
 const logLines = [];
@@ -1554,10 +1564,34 @@ async function askBrain(prompt, context) {
   const hwCtx = getHardwareContextString();
   const fullContext = [hwCtx, context].filter(Boolean).join(' | ');
   try {
-    // Tier 1: Direct Google Gemini REST API (Official Google AI Studio Endpoint over HTTPS)
+    // Priority 1: Antigravity Pro Session on PC (Active Google Account: aliahmed120250176@gmail.com with Gemini 2.5 Flash)
+    if (cfg.provider === 'relay' || !cfg.provider) {
+      try {
+        log('Querying Antigravity Pro Bridge:', bridgeBase());
+        const res = await fetch(`${bridgeBase()}/api/chat`, {
+          method: 'POST', signal,
+          headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS },
+          body: JSON.stringify({ prompt, history: history.slice(-12), context: fullContext || null, voice: cfg.voice, image_b64: imgB64 }),
+        });
+        if (res.ok) {
+          const j = await res.json();
+          return {
+            text: j.reply,
+            emotion: (j.emotion || 'NEUTRAL').toUpperCase(),
+            action: j.action || null,
+            clauses: j.clauses || null,
+            firstAudioB64: j.first_audio_b64 || null,
+          };
+        }
+      } catch (bridgeErr) {
+        log('Antigravity Pro Bridge notice:', bridgeErr.message);
+      }
+    }
+
+    // Priority 2: Direct Google Gemini REST API (if user enters a key)
     const effectiveGeminiKey = cfg.geminiKey && cfg.geminiKey.trim();
-    if (effectiveGeminiKey && (cfg.provider === 'gemini' || cfg.provider === 'relay' || !cfg.provider)) {
-      log('Querying Google Gemini API directly over HTTPS...');
+    if (effectiveGeminiKey && cfg.provider === 'gemini') {
+      log('Querying Google Gemini API directly...');
       const userText = fullContext ? `(${fullContext})\n${prompt}` : prompt;
       const parts = [];
       if (imgB64) {
@@ -1565,7 +1599,6 @@ async function askBrain(prompt, context) {
         parts.push({ inlineData: { mimeType: 'image/jpeg', data: cleanB64 } });
       }
       parts.push({ text: userText });
-
       const contents = [
         ...history.slice(-8).map(h => ({
           role: h.role === 'model' ? 'model' : 'user',
@@ -1573,33 +1606,24 @@ async function askBrain(prompt, context) {
         })),
         { role: 'user', parts }
       ];
-
       const model = cfg.geminiModel || 'gemini-2.0-flash';
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveGeminiKey}`;
-
       const res = await fetch(endpoint, {
-        method: 'POST',
-        signal,
+        method: 'POST', signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
           contents,
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 200
-          }
+          generationConfig: { temperature: 0.7, maxOutputTokens: 200 }
         })
       });
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Gemini API error (${res.status}): ${errText.slice(0, 100)}`);
-      }
+      if (!res.ok) throw new Error('Gemini API ' + res.status);
       const data = await res.json();
       const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       return parseReply(rawText);
     }
 
-    // Tier 2: OpenRouter
+    // Priority 3: OpenRouter
     if (cfg.provider === 'openrouter' && cfg.orKey) {
       log('Querying OpenRouter API...');
       const userText = fullContext ? `(${fullContext})\n${prompt}` : prompt;
@@ -1619,50 +1643,8 @@ async function askBrain(prompt, context) {
       return parseReply(j.choices?.[0]?.message?.content || '');
     }
 
-    // Tier 3: Same-Origin Vercel Serverless Function /api/chat
-    if (location.hostname.endsWith('vercel.app')) {
-      try {
-        const res = await fetch('/api/chat', {
-          method: 'POST', signal,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, history: history.slice(-8), context: fullContext || null, image_b64: imgB64 })
-        });
-        if (res.ok) {
-          const j = await res.json();
-          if (j.reply) {
-            return {
-              text: j.reply,
-              emotion: (j.emotion || 'HAPPY').toUpperCase(),
-              action: j.action || null
-            };
-          }
-        }
-      } catch (e) {
-        log('Vercel serverless /api/chat check:', e.message);
-      }
-    }
-
-    // Tier 4: Local Bridge (if running locally or connected to Cloudflare tunnel)
-    if (hasBridge()) {
-      const res = await fetch(`${bridgeBase()}/api/chat`, {
-        method: 'POST', signal,
-        headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS },
-        body: JSON.stringify({ prompt, history: history.slice(-12), context: fullContext || null, voice: cfg.voice, image_b64: imgB64 }),
-      });
-      if (res.ok) {
-        const j = await res.json();
-        return {
-          text: j.reply,
-          emotion: (j.emotion || 'NEUTRAL').toUpperCase(),
-          action: j.action || null,
-          clauses: j.clauses || null,
-          firstAudioB64: j.first_audio_b64 || null,
-        };
-      }
-    }
-
-    // Tier 5: Comprehensive Smart Offline Brain (Cognitive delay + 30+ intents + rotating fallbacks)
-    log('No cloud bridge detected; utilizing Smart Offline Engine...');
+    // Priority 4: Smart Offline Brain
+    log('Offline smart engine handling turn...');
     return await getOfflineReply(prompt);
   } finally { clearTimeout(timeout); }
 }
