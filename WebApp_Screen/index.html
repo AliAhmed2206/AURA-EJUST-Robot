@@ -2742,36 +2742,20 @@ async function connectBle() {
     return;
   }
   try {
-    notice('Scanning for Bluetooth devices...', 2500);
-    // acceptAllDevices: true allows pairing with all nearby BLE devices regardless of payload splitting
-    let dev;
-    try {
-      dev = await navigator.bluetooth.requestDevice({
-        filters: [
-          { namePrefix: 'AURA' },
-          { services: [NUS] }
-        ],
-        optionalServices: [
-          NUS,
-          '0000ffe0-0000-1000-8000-00805f9b34fb',
-          'battery_service',
-          'device_information',
-          'generic_access'
-        ]
-      });
-    } catch (filterErr) {
-      if (filterErr.name === 'NotFoundError') throw filterErr;
-      dev = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: [
-          NUS,
-          '0000ffe0-0000-1000-8000-00805f9b34fb',
-          'battery_service',
-          'device_information',
-          'generic_access'
-        ]
-      });
-    }
+    notice('Scanning for ALL Bluetooth devices (AURA-BOT / ESP32)...', 3000);
+    // Use acceptAllDevices: true directly so Chrome never hides your ESP32 behind strict name filters
+    const dev = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [
+        NUS,
+        '0000ffe0-0000-1000-8000-00805f9b34fb',
+        '00001800-0000-1000-8000-00805f9b34fb',
+        '00001801-0000-1000-8000-00805f9b34fb',
+        'battery_service',
+        'device_information',
+        'generic_access'
+      ]
+    });
     bleDev = dev;
     dev.addEventListener('gattserverdisconnected', () => {
       bleRx = null;
