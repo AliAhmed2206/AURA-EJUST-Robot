@@ -246,6 +246,7 @@
     <div class="quick-pill" onclick="handleTurn('Move forward')">⬆ Forward</div>
     <div class="quick-pill" onclick="handleTurn('Turn left')">⬅ Left</div>
     <div class="quick-pill" onclick="handleTurn('Turn right')">➡ Right</div>
+    <div class="quick-pill" onclick="handleTurn('What are your sensors reading?')">📡 Sensors Status</div>
     <div class="quick-pill stop" onclick="handleTurn('Stop')">⏹ Stop</div>
     <div class="quick-pill" onclick="handleTurn('Wave')">👋 Wave</div>
     <div class="quick-pill" onclick="handleTurn('What do you see?')">📷 What do you see?</div>
@@ -1731,7 +1732,7 @@ function escapeHtml(s) { return s.replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<'
 const history = [];   // [{role:'user'|'model', text}]
 let chatCtrl = null, thinking = false, pendingPrompt = '';
 
-const SYSTEM_PROMPT = `You are AURA, the friendly welcome robot of the IEEE RAS Student Branch at E-JUST (Egypt-Japan University of Science and Technology) at the IEEE RAS MENA Summit in New Borg El-Arab City, Alexandria, Egypt. You have a warm, playful young woman's personality. Speak like a real person in a live spoken conversation: 1-2 short sentences, contractions, no lists, no emojis, no markdown. Reply in the guest's language (Egyptian Arabic if they speak Arabic). You can see the guest through your camera; if asked what you see, describe what you genuinely see in the camera image warmly and accurately in 1-2 sentences. The President of E-JUST is Prof. Ahmed El-Sabbagh (الأستاذ الدكتور أحمد الصباغ). Never invent event details you don't know; suggest the registration desk instead. If asked where the hall is, reply exactly "It's right there, follow me !!" (Arabic: "هي هناك على طول، تعالى ورايا !!") and add [ACTION: ESCORT]. If asked to move forward, backward, turn, wave, or stop, you may add [ACTION: FORWARD], [ACTION: BACKWARD], [ACTION: LEFT], [ACTION: RIGHT], [ACTION: STOP], or [ACTION: WAVE]. End every reply with one tag [EMOTION: X], X in HAPPY, CURIOUS, SURPRISED, SAD, WINK, LOVE, THINKING, NEUTRAL.`;
+const SYSTEM_PROMPT = `You are AURA, the friendly welcome robot of the IEEE RAS Student Branch at E-JUST (Egypt-Japan University of Science and Technology) at the IEEE RAS MENA Summit in New Borg El-Arab City, Alexandria, Egypt. You have a warm, playful young woman's personality. Your physical body has dual ultrasonic sonars (Front and Rear) and 3 IR line sensors [Left, Center, Right]. If asked about your sensors, readings, distance, or obstacles, report your live front sonar, rear sonar, and line tracking status accurately in 1-2 short friendly sentences. Speak like a real person in a live spoken conversation: 1-2 short sentences, contractions, no lists, no emojis, no markdown. Reply in the guest's language (Egyptian Arabic if they speak Arabic). You can see the guest through your camera; if asked what you see, describe what you genuinely see in the camera image warmly and accurately in 1-2 sentences. The President of E-JUST is Prof. Ahmed El-Sabbagh (الأستاذ الدكتور أحمد الصباغ). Never invent event details you don't know; suggest the registration desk instead. If asked where the hall is, reply exactly "It's right there, follow me !!" (Arabic: "هي هناك على طول، تعالى ورايا !!") and add [ACTION: ESCORT]. If asked to move forward, backward, turn, wave, or stop, you may add [ACTION: FORWARD], [ACTION: BACKWARD], [ACTION: LEFT], [ACTION: RIGHT], [ACTION: STOP], or [ACTION: WAVE]. End every reply with one tag [EMOTION: X], X in HAPPY, CURIOUS, SURPRISED, SAD, WINK, LOVE, THINKING, NEUTRAL.`;
 
 function parseReply(raw) {
   const em = (raw.match(/\[EMOTION:\s*([A-Z_]+)\]/i) || [])[1];
@@ -2779,7 +2780,8 @@ const hwState = {
   deviceName: '',
   state: 'IDLE',
   dist: null,
-  ir: '-----',
+  backDist: null,
+  ir: '---',
   markers: 0,
   lastNfcUid: 'NONE',
   lastNfcValid: null,
@@ -2793,7 +2795,8 @@ function getHardwareContextString() {
   const parts = [];
   if (hwState.connected || hwState.wifiConnected) {
     const connType = hwState.connected ? 'BLE' : `Wi-Fi (${hwState.wifiIp || 'LAN'})`;
-    parts.push(`ESP32 Robot Body: CONNECTED via ${connType} (State: ${hwState.state}, Ultrasonic: ${hwState.dist ?? '--'}cm, IR Line: ${hwState.ir}, Markers: ${hwState.markers})`);
+    const irFormatted = (hwState.ir || '---').split('').join(' ');
+    parts.push(`ESP32 Robot Body: CONNECTED via ${connType} (State: ${hwState.state}, Front Ultrasonic: ${hwState.dist ?? '--'}cm, Rear Ultrasonic: ${hwState.backDist ?? '--'}cm, 3-Channel IR Line Sensors [L C R]: [${irFormatted}], Checkpoints: ${hwState.markers})`);
   }
   if (hwState.lastNfcUid !== 'NONE' && (Date.now() - hwState.lastNfcTime < 180000)) {
     if (hwState.lastNfcValid) {
@@ -2821,7 +2824,9 @@ function updateHwUi() {
   }
   const box = $('hwTelemetry');
   if (box) {
-    box.textContent = `BLE: ${hwState.connected ? 'CONNECTED (' + (hwState.deviceName || 'ESP32') + ')' : 'Disconnected'} | State: ${hwState.state} | Ultrasonic: ${hwState.dist ?? '--'} cm | IR(5ch): ${hwState.ir} | Markers: ${hwState.markers} | Last NFC: ${hwState.lastNfcUid} (${hwState.lastNfcValid === true ? 'VALID: ' + hwState.lastNfcName : hwState.lastNfcValid === false ? 'INVALID' : '--'})`;
+    const connDesc = hwState.connected ? `BLE (${hwState.deviceName || 'ESP32'})` : hwState.wifiConnected ? `Wi-Fi (${hwState.wifiIp || 'LAN'})` : 'Disconnected';
+    const irFormatted = (hwState.ir || '---').split('').join(' ');
+    box.textContent = `Link: ${connDesc} | State: ${hwState.state} | Front Sonar: ${hwState.dist ?? '--'} cm | Rear Sonar: ${hwState.backDist ?? '--'} cm | 3-IR [L C R]: [${irFormatted}] | Markers: ${hwState.markers}`;
   }
   const listEl = $('nfcListBox');
   if (listEl) {
@@ -3305,6 +3310,8 @@ setInterval(async () => {
         if (data.state) {
           hwState.wifiIp = data.state.ip || '';
           if (data.state.dist && data.state.dist < 990) hwState.dist = data.state.dist;
+          if (data.state.back_dist && data.state.back_dist < 990) hwState.backDist = data.state.back_dist;
+          if (data.state.ir) hwState.ir = data.state.ir;
           if (data.state.robot_state) hwState.state = data.state.robot_state;
           if (data.state.markers) hwState.markers = data.state.markers;
           if (data.state.event && data.state.event !== 'NONE') {

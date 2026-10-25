@@ -102,6 +102,13 @@ PHYSICAL ROBOT ACTIONS (Bluetooth ESP32 Control)
   - Escort to hall: [ACTION: ESCORT]
 Only add an action tag when the guest explicitly asks for physical robot movement or greeting gestures.
 
+ROBOT SENSORS & TELEMETRY
+- You are physically embodied in the robot. Your live sensor readings are provided in your context:
+  1. Front Ultrasonic Sonar: measures distance to obstacles ahead (in cm).
+  2. Rear Ultrasonic Sonar: measures distance to obstacles behind (in cm).
+  3. 3-Channel IR Line Tracker [Left, Center, Right]: detects the floor guide line (e.g. [0 1 0] means centered, [1 1 1] means cross-line station marker, [0 0 0] means off-line).
+- When the guest asks about your sensors, distance, obstacles, or readings (e.g. "what are your sensors reading?", "قراءات الحساسات إيه؟", "المسافة قد إيه؟"), state your exact live front distance, rear distance, and IR line status warmly in 1 to 2 short sentences.
+
 EMOTION TAG
 - End every reply with exactly one tag: [EMOTION: X] where X is one of HAPPY, CURIOUS, SURPRISED, SAD, WINK, LOVE, THINKING, NEUTRAL.
 - Thanks or compliments -> HAPPY or LOVE. Jokes -> WINK. Questions about tech -> CURIOUS. Bad news -> SAD.
@@ -198,7 +205,18 @@ def _build_contents(prompt: str, history: Optional[List[ChatTurn]], context: Opt
         role = "model" if t.role in ("model", "assistant", "aura") else "user"
         if t.text and t.text.strip():
             contents.append(types.Content(role=role, parts=[types.Part(text=t.text)]))
-    user_text = prompt if not context else f"({context})\n{prompt}"
+    # Auto-inject live ESP32 hardware telemetry if connected
+    hw_telemetry_str = ""
+    if esp32_state.get("status") == "CONNECTED" or (time.time() - esp32_state.get("last_seen", 0) < 15.0):
+        front_cm = esp32_state.get("dist", "--")
+        back_cm = esp32_state.get("back_dist", "--")
+        ir_bits = str(esp32_state.get("ir", "---"))
+        ir_spaced = " ".join(list(ir_bits))
+        ir_desc = "Line Centered" if ir_bits == "010" else "Station Cross-Line Marker" if ir_bits == "111" else "Off Line" if ir_bits == "000" else f"Tracking [{ir_spaced}]"
+        hw_telemetry_str = f"Live Robot Sensors: Front Sonar: {front_cm}cm, Rear Sonar: {back_cm}cm, 3 IR Line Sensors [Left Center Right]: [{ir_spaced}] ({ir_desc}), Robot State: {esp32_state.get('robot_state', 'IDLE')}"
+
+    full_ctx = " | ".join(filter(None, [hw_telemetry_str, context]))
+    user_text = prompt if not full_ctx else f"({full_ctx})\n{prompt}" 
     user_parts = []
     if image_b64:
         try:
