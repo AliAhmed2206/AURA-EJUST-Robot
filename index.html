@@ -2667,6 +2667,8 @@ function findVipCard(uid) {
 
 const hwState = {
   connected: false,
+  wifiConnected: false,
+  wifiIp: '',
   deviceName: '',
   state: 'IDLE',
   dist: null,
@@ -2682,8 +2684,9 @@ const hwState = {
 
 function getHardwareContextString() {
   const parts = [];
-  if (hwState.connected) {
-    parts.push(`ESP32 Robot Body: CONNECTED (State: ${hwState.state}, Ultrasonic: ${hwState.dist ?? '--'}cm, IR Line: ${hwState.ir}, Markers: ${hwState.markers})`);
+  if (hwState.connected || hwState.wifiConnected) {
+    const connType = hwState.connected ? 'BLE' : `Wi-Fi (${hwState.wifiIp || 'LAN'})`;
+    parts.push(`ESP32 Robot Body: CONNECTED via ${connType} (State: ${hwState.state}, Ultrasonic: ${hwState.dist ?? '--'}cm, IR Line: ${hwState.ir}, Markers: ${hwState.markers})`);
   }
   if (hwState.lastNfcUid !== 'NONE' && (Date.now() - hwState.lastNfcTime < 180000)) {
     if (hwState.lastNfcValid) {
@@ -2700,10 +2703,13 @@ function updateHwUi() {
   if (badge) {
     if (hwState.connected) {
       badge.className = 'connected';
-      badge.textContent = `● ESP32: ${hwState.state}${hwState.dist && hwState.dist < 100 ? ' (' + hwState.dist + 'cm)' : ''}`;
+      badge.textContent = `● BLE: ${hwState.state}${hwState.dist && hwState.dist < 100 ? ' (' + hwState.dist + 'cm)' : ''}`;
+    } else if (hwState.wifiConnected) {
+      badge.className = 'connected';
+      badge.textContent = `● WI-FI: ${hwState.state}${hwState.dist && hwState.dist < 100 ? ' (' + hwState.dist + 'cm)' : ''}`;
     } else {
       badge.className = '';
-      badge.textContent = '● BLE: TAP TO PAIR';
+      badge.textContent = '● ESP32: PAIR / WI-FI';
     }
   }
   const box = $('hwTelemetry');
@@ -2821,7 +2827,15 @@ async function attachBleGatt(dev) {
 }
 
 async function sendBle(obj) {
-  log('BLE ->', obj);
+  log('ROBOT_CMD ->', obj);
+  try {
+    const bridge = bridgeBase();
+    fetch(`${bridge}/api/esp32/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(obj)
+    }).catch(() => {});
+  } catch (e) {}
   if (!bleRx) return;
   const data = new TextEncoder().encode(JSON.stringify(obj) + '\n');
   try {
@@ -3172,6 +3186,32 @@ $('bDemo').onclick = async () => {
 updateHwUi();
 
 // Small debug/automation hook
+// Poll ESP32 Wi-Fi hardware link
+setInterval(async () => {
+  try {
+    const bridge = bridgeBase();
+    const res = await fetch(`${bridge}/api/esp32/status`, { signal: AbortSignal.timeout(1500) });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.online) {
+        hwState.wifiConnected = true;
+        if (data.state) {
+          hwState.wifiIp = data.state.ip || '';
+          if (data.state.dist && data.state.dist < 990) hwState.dist = data.state.dist;
+          if (data.state.robot_state) hwState.state = data.state.robot_state;
+          if (data.state.markers) hwState.markers = data.state.markers;
+          if (data.state.event === 'NFC_TAP' && data.state.uid && data.state.uid !== 'NONE' && data.state.uid !== hwState.lastNfcUid) {
+            onEsp32({ event: 'NFC_TAP', uid: data.state.uid });
+          }
+        }
+      } else {
+        hwState.wifiConnected = false;
+      }
+      updateHwUi();
+    }
+  } catch (e) {}
+}, 2000);
+
 window.AURA = { setEmotion, setFaceStyle, speak, handleTurn, sendBle, onEsp32, registerCardUid, bargeIn, gaze, history, hwState, vipCards, get state() { return { emotion, isSpeaking, thinking, awake, style: cfg.style, hwState }; } };
 </script>
 </body>

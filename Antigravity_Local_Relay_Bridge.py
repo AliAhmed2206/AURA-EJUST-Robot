@@ -627,6 +627,132 @@ async def websocket_live_gateway(websocket: WebSocket):
     except Exception as e:
         print(f"[WS ERROR] {e}")
 
+# 4b. ESP32 Wi-Fi Command & Telemetry Endpoints
+# --------------------------------------------------------------------------------------
+ESP32_WIFI_TOKEN = "AURA-EJUST-VIP-2026-TOKEN"
+esp32_cmd_queue: List[str] = []
+esp32_state = {
+    "status": "DISCONNECTED",
+    "last_seen": 0,
+    "last_seen_str": "Never",
+    "ip": None,
+    "event": "NONE",
+    "uid": "NONE",
+    "dist": 999,
+    "markers": 0,
+    "robot_state": "IDLE"
+}
+
+@app.get("/api/esp32/token")
+def get_esp32_token():
+    """Returns the official ESP32 Wi-Fi token and network connection coordinates."""
+    return {
+        "token": ESP32_WIFI_TOKEN,
+        "local_host": f"http://{LOCAL_IP}:8080",
+        "tunnel_host": "https://put-properties-voltage-attacks.trycloudflare.com",
+        "command_endpoint": f"http://{LOCAL_IP}:8080/api/esp32/command",
+        "telemetry_endpoint": f"http://{LOCAL_IP}:8080/api/esp32/telemetry",
+        "send_endpoint": f"http://{LOCAL_IP}:8080/api/esp32/send",
+        "status_endpoint": f"http://{LOCAL_IP}:8080/api/esp32/status"
+    }
+
+@app.get("/api/esp32/status")
+def get_esp32_status():
+    """Returns real-time connection status of the ESP32 Wi-Fi hardware."""
+    is_online = (time.time() - esp32_state["last_seen"]) < 6.0
+    return {
+        "online": is_online,
+        "status": "ONLINE" if is_online else "OFFLINE",
+        "state": esp32_state,
+        "queued_commands": len(esp32_cmd_queue)
+    }
+
+@app.post("/api/esp32/send")
+async def send_esp32_command(request: Request):
+    """
+    Called by WebApp (or voice action tag handler) to queue a command for the ESP32.
+    Payload: {"cmd": "MOVE_FWD", "ms": 1500} or {"action": "FORWARD"}
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    
+    cmd = body.get("cmd") or body.get("action")
+    if not cmd:
+        return JSONResponse(status_code=400, content={"error": "Missing 'cmd' or 'action' field"})
+    
+    cmd_str = str(cmd).upper()
+    if cmd_str == "FORWARD": cmd_str = "MOVE_FWD"
+    elif cmd_str == "BACKWARD": cmd_str = "MOVE_REV"
+    elif cmd_str == "LEFT": cmd_str = "TURN_LEFT"
+    elif cmd_str == "RIGHT": cmd_str = "TURN_RIGHT"
+    elif cmd_str == "ESCORT": cmd_str = "START_ESCORT"
+    
+    ms = body.get("ms")
+    if ms:
+        cmd_payload = f'{{"cmd":"{cmd_str}","ms":{int(ms)}}}'
+    else:
+        cmd_payload = cmd_str
+        
+    esp32_cmd_queue.append(cmd_payload)
+    if len(esp32_cmd_queue) > 20:
+        esp32_cmd_queue.pop(0)
+        
+    print(f"[ESP32 QUEUE] Queued: {cmd_payload} (Queue size: {len(esp32_cmd_queue)})")
+    return {"status": "queued", "cmd": cmd_payload, "queue_len": len(esp32_cmd_queue)}
+
+@app.get("/api/esp32/command")
+def get_esp32_command(token: Optional[str] = None, request: Request = None):
+    """
+    Polled every ~120-200ms by ESP32 over Wi-Fi.
+    Returns next command in queue or 'NONE'.
+    """
+    auth_header = request.headers.get("Authorization", "") if request else ""
+    if token != ESP32_WIFI_TOKEN and auth_header != f"Bearer {ESP32_WIFI_TOKEN}":
+        raise HTTPException(status_code=401, detail="Invalid ESP32 Security Token")
+    
+    esp32_state["last_seen"] = time.time()
+    esp32_state["last_seen_str"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    if request and request.client:
+        esp32_state["ip"] = request.client.host
+    esp32_state["status"] = "CONNECTED"
+    
+    if esp32_cmd_queue:
+        cmd = esp32_cmd_queue.pop(0)
+        print(f"[ESP32 DISPATCH] Sent to ESP32: {cmd}")
+        return {"cmd": cmd, "has_more": len(esp32_cmd_queue) > 0}
+    return {"cmd": "NONE", "has_more": False}
+
+@app.post("/api/esp32/telemetry")
+async def post_esp32_telemetry(request: Request):
+    """
+    Posted by ESP32 when NFC card is scanned, obstacle detected, or status changes.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+        
+    token = body.get("token") or request.query_params.get("token") or request.headers.get("Authorization", "").replace("Bearer ", "")
+    if token != ESP32_WIFI_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid ESP32 Security Token")
+        
+    esp32_state["last_seen"] = time.time()
+    esp32_state["last_seen_str"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    if request.client:
+        esp32_state["ip"] = request.client.host
+    esp32_state["status"] = "CONNECTED"
+    
+    if "event" in body: esp32_state["event"] = body["event"]
+    if "uid" in body: esp32_state["uid"] = body["uid"]
+    if "dist" in body: esp32_state["dist"] = body["dist"]
+    if "passed" in body: esp32_state["markers"] = body["passed"]
+    if "state" in body: esp32_state["robot_state"] = body["state"]
+    
+    print(f"[ESP32 TELEMETRY] {body}")
+    return {"status": "ok", "received": True, "queued_cmds": len(esp32_cmd_queue)}
+
 # 5. Serve WebApp Screen Static Files directly at root
 WEB_APP_DIR = r"C:\VIP_Humanoid_Robot\WebApp_Screen"
 if os.path.exists(WEB_APP_DIR):
