@@ -12,9 +12,11 @@
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #cfe9ff; }
   #face { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
 
-  /* Wake hint: only shown before the first tap (browsers require one tap for mic + sound) */
-  #wake { position: fixed; left: 0; right: 0; bottom: 7vh; text-align: center; font-size: 15px;
-    letter-spacing: .25em; color: rgba(0,229,255,.55); animation: breathe 2.4s ease-in-out infinite; pointer-events: none; }
+  /* Wake Button: Tap to start mic, vision & voice */
+  #wake { position: fixed; left: 50%; bottom: 8vh; transform: translateX(-50%); padding: 10px 24px; border-radius: 99px;
+    background: rgba(11,7,20,.85); border: 1px solid rgba(0,229,255,.6); color: #00e5ff; font-size: 13px; font-weight: 700;
+    letter-spacing: .18em; box-shadow: 0 0 22px rgba(0,229,255,.35); cursor: pointer; z-index: 10; pointer-events: auto;
+    animation: breathe 2.2s ease-in-out infinite; white-space: nowrap; backdrop-filter: blur(6px); user-select: none; }
   @keyframes breathe { 0%,100% { opacity: .35 } 50% { opacity: .9 } }
 
   /* Optional captions (off by default; enable in settings) */
@@ -25,16 +27,54 @@
   /* Notice for errors (mic blocked etc.) */
   #notice { position: fixed; top: 4vh; left: 0; right: 0; text-align: center; font-size: 14px; color: #ffcc66; display: none; pointer-events: none; z-index: 6; }
 
-  /* Subtle BLE corner pill (tap directly to pair ESP32) & auto-fading NFC/Sensor toast banner */
-  #bleBadge { position: fixed; top: 12px; left: 14px; padding: 5px 11px; border-radius: 99px; font-size: 11px; letter-spacing: .08em;
-    background: rgba(11,7,20,.65); border: 1px solid rgba(156,39,176,.35); color: rgba(207,233,255,.55); cursor: pointer; z-index: 6;
-    transition: all .25s ease; backdrop-filter: blur(4px); }
-  #bleBadge.connected { border-color: rgba(0,229,255,.7); color: #00e5ff; box-shadow: 0 0 12px rgba(0,229,255,.25); opacity: .88; }
+  /* Top Bar with BLE, Language Toggle, Real-time Hearing Indicator & Camera Mode */
+  #topBar { position: fixed; top: 12px; left: 14px; right: 14px; display: flex; gap: 8px; align-items: center; z-index: 8; pointer-events: none; }
+  #topBar > * { pointer-events: auto; }
+  #bleBadge { padding: 6px 12px; border-radius: 99px; font-size: 11px; letter-spacing: .08em;
+    background: rgba(11,7,20,.75); border: 1px solid rgba(156,39,176,.4); color: rgba(207,233,255,.6); cursor: pointer;
+    transition: all .25s ease; backdrop-filter: blur(6px); }
+  #bleBadge.connected { border-color: rgba(0,229,255,.8); color: #00e5ff; box-shadow: 0 0 12px rgba(0,229,255,.3); }
+
+  #langBadge { padding: 6px 12px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    background: rgba(11,7,20,.75); border: 1px solid rgba(0,229,255,.45); color: #00e5ff; cursor: pointer;
+    backdrop-filter: blur(6px); transition: all .25s ease; user-select: none; }
+  #langBadge:hover { background: rgba(0,229,255,.2); box-shadow: 0 0 12px rgba(0,229,255,.4); }
+
+  #micBadge { padding: 6px 14px; border-radius: 99px; font-size: 11px; letter-spacing: .05em;
+    background: rgba(11,7,20,.75); border: 1px solid rgba(156,39,176,.45); color: rgba(207,233,255,.85); cursor: pointer;
+    backdrop-filter: blur(6px); transition: all .25s ease; max-width: 44vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; }
+  #micBadge.hearing { border-color: #00e5ff; color: #80f8ff; box-shadow: 0 0 14px rgba(0,229,255,.4); }
+  #micBadge.speaking { border-color: #b388ff; color: #e1bee7; }
+  #micBadge.blocked { border-color: #ff4081; color: #ff80ab; background: rgba(35,10,25,.88); animation: pulseWarn 1.2s infinite; }
+  @keyframes pulseWarn { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+  #camBtn { padding: 6px 15px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+    background: rgba(11,7,20,.85); border: 1px solid #00e5ff; color: #00e5ff; cursor: pointer;
+    backdrop-filter: blur(6px); box-shadow: 0 0 12px rgba(0,229,255,.25); transition: all .25s ease; user-select: none; }
+  #camBtn:hover { background: #00e5ff; color: #05030a; box-shadow: 0 0 20px rgba(0,229,255,.6); }
+
   #nfcBanner { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: 99px;
     font-size: 13px; font-weight: 600; letter-spacing: .06em; background: rgba(11,7,20,.9); border: 1px solid #00e5ff;
-    color: #e6f4ff; box-shadow: 0 0 22px rgba(0,229,255,.35); z-index: 7; display: none; pointer-events: none; white-space: nowrap; }
+    color: #e6f4ff; box-shadow: 0 0 22px rgba(0,229,255,.35); z-index: 9; display: none; pointer-events: none; white-space: nowrap; }
   #nfcBanner.invalid { border-color: #ff4081; color: #ff99bb; box-shadow: 0 0 22px rgba(255,64,129,.4); }
   #nfcBanner.valid { border-color: #00e5ff; color: #80f8ff; box-shadow: 0 0 22px rgba(0,229,255,.45); }
+
+  /* Dedicated Fullscreen Camera / Vision Mode */
+  #camView { position: fixed; inset: 0; width: 100vw; height: 100vh; background: #000; z-index: 50; display: none; overflow: hidden; }
+  #fullCamVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #camHudCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 51; }
+  .cam-top-bar { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; gap: 10px; align-items: center; z-index: 52; }
+  .hud-pill { padding: 6px 14px; border-radius: 99px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; letter-spacing: .08em;
+    background: rgba(11,7,20,.8); border: 1px solid rgba(0,229,255,.5); color: #00e5ff; backdrop-filter: blur(6px); }
+  .live-pill { color: #00e5ff; border-color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,.35); }
+  .hud-btn { padding: 7px 16px; border-radius: 10px; font-size: 11px; font-weight: 600; letter-spacing: .06em;
+    background: rgba(11,7,20,.85); border: 1px solid #00e5ff; color: #cfe9ff; cursor: pointer; backdrop-filter: blur(6px); transition: all .2s; }
+  .hud-btn:hover { background: #00e5ff; color: #05030a; }
+  .hud-exit { border-color: #ff4081; color: #ff80ab; }
+  .hud-exit:hover { background: #ff4081; color: #fff; }
+  .cam-bottom-bar { position: absolute; bottom: 14px; left: 0; right: 0; display: flex; justify-content: center; z-index: 52; }
+  #camTelemetry { padding: 5px 18px; border-radius: 99px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; letter-spacing: .08em;
+    background: rgba(11,7,20,.8); border: 1px solid rgba(156,39,176,.4); color: rgba(207,233,255,.75); backdrop-filter: blur(6px); }
 
   /* Settings: hidden; open with a long-press (1 s) anywhere */
   #settings { position: fixed; inset: 0; background: rgba(5,3,10,.94); display: none; overflow: auto; z-index: 10; }
@@ -62,13 +102,35 @@
 </head>
 <body>
 <canvas id="face"></canvas>
-<div id="bleBadge" title="Tap to pair ESP32 over Bluetooth">● BLE: TAP TO PAIR</div>
+<div id="topBar">
+  <div id="bleBadge" title="Tap to pair ESP32 over Bluetooth">● BLE: TAP TO PAIR</div>
+  <div id="langBadge" title="Tap to switch Language (English / العربية)">🌐 EN</div>
+  <div id="micBadge" title="Microphone Status (Tap to unblock/allow)">🎙️ LISTENING</div>
+  <div style="flex:1"></div>
+  <button id="camBtn" title="See what AURA sees in Fullscreen">📷 CAMERA</button>
+</div>
 <div id="nfcBanner"></div>
-<div id="wake">TAP TO WAKE AURA</div>
+<div id="wake">TAP ANYWHERE TO WAKE AURA ⚡</div>
 <div id="caption"></div>
 <div id="notice"></div>
-<video id="cam" playsinline muted style="display:none"></video>
+<video id="cam" playsinline muted style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none"></video>
 <canvas id="camPreview" width="160" height="120"></canvas>
+
+<!-- Dedicated Fullscreen Camera / Vision View -->
+<div id="camView">
+  <video id="fullCamVideo" playsinline autoplay muted></video>
+  <canvas id="camHudCanvas"></canvas>
+  <div class="cam-top-bar">
+    <div class="hud-pill live-pill">● LIVE OPTICAL FEED</div>
+    <div class="hud-pill" id="camTargetInfo">TARGET: SCANNING</div>
+    <div style="flex:1"></div>
+    <button class="hud-btn" id="camFlipBtn">🔄 FLIP LENS</button>
+    <button class="hud-btn hud-exit" id="camCloseBtn">✕ EXIT FULLSCREEN</button>
+  </div>
+  <div class="cam-bottom-bar">
+    <div id="camTelemetry">OPTICAL SENSORS ACTIVE | NORDIC AI TRACKER | 30 FPS</div>
+  </div>
+</div>
 
 <div id="settings">
   <div class="panel">
@@ -184,7 +246,8 @@ const cfg = {
 };
 function setFaceStyle(s) { cfg.style = s; store.set('style_default_v2', s); }
 window.setFaceStyle = setFaceStyle;
-const bridgeBase = () => (cfg.bridge || (location.protocol.startsWith('http') ? location.origin : 'http://192.168.1.19:8080')).replace(/\/+$/, '');
+const hasBridge = () => Boolean(cfg.bridge || (location.protocol === 'http:' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1')));
+const bridgeBase = () => (cfg.bridge || (location.protocol === 'http:' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? location.origin : '')).replace(/\/+$/, '');
 const TUNNEL_HEADERS = { 'Bypass-Tunnel-Reminder': 'true' };
 
 const logLines = [];
@@ -1295,17 +1358,51 @@ function playBuffer(buffer) {
   });
 }
 
+let activeUtterance = null;
 function speakFallback(text) {
   return new Promise((resolve) => {
     if (!('speechSynthesis' in window)) return resolve();
+    try {
+      speechSynthesis.cancel();
+      speechSynthesis.resume();
+    } catch (e) {}
+
     const u = new SpeechSynthesisUtterance(text);
     u.lang = isArabic(text) ? 'ar-EG' : 'en-US';
+    activeUtterance = u;
+    window._activeUtterance = u;
+
     const voices = speechSynthesis.getVoices().filter(v => v.lang.startsWith(u.lang.slice(0, 2)));
-    u.voice = voices.find(v => /natural|neural|google/i.test(v.name)) || voices[0] || null;
-    u.rate = 1.0; u.pitch = 1.08;
-    const fake = setInterval(() => { mouthLevel = 0.25 + Math.random() * 0.5; }, 90);
-    u.onend = u.onerror = () => { clearInterval(fake); resolve(); };
-    speechSynthesis.speak(u);
+    if (voices.length) {
+      u.voice = voices.find(v => /natural|neural|google|salma|ava|online/i.test(v.name)) || voices[0];
+    }
+    u.rate = 1.0;
+    u.pitch = 1.08;
+
+    let done = false;
+    let fakeMeter = null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (fakeMeter) clearInterval(fakeMeter);
+      activeUtterance = null;
+      window._activeUtterance = null;
+      resolve();
+    };
+
+    fakeMeter = setInterval(() => { mouthLevel = 0.25 + Math.random() * 0.55; }, 85);
+    u.onend = finish;
+    u.onerror = finish;
+
+    // Safety watchdog: ensure promise resolves even if mobile browser drops onend
+    const maxDur = Math.max(1600, text.length * 100);
+    setTimeout(finish, maxDur);
+
+    try {
+      speechSynthesis.speak(u);
+    } catch (err) {
+      finish();
+    }
   });
 }
 
@@ -1315,22 +1412,24 @@ async function speak(text, emo = 'NEUTRAL', { holdAfter = 2500, firstAudioB64 = 
   text = (text || '').trim(); if (!text) return;
   ensureAudio();
   isSpeaking = true; recTaintedBySpeaker = true; lastInterim = ''; currentReply = text; spokenSoFar = '';
+  updateMicBadge('speaking');
+
   const ctrl = new AbortController(); speak.ctrl = ctrl;
   const sentences = (clauses && clauses.length) ? clauses : splitSentences(text);
 
-  // Decode inline first clause immediately if provided by /api/chat (eliminates tunnel round-trip)
+  // If no bridge is active (e.g. running on GitHub Pages / Vercel without tunnel), speak locally with zero delay
   const jobs = sentences.map((s, idx) => {
+    if (!hasBridge()) return Promise.resolve(null);
     if (idx === 0 && firstAudioB64) {
       return decodeBase64Audio(firstAudioB64).catch(() => fetchVoice(s, ctrl.signal)).catch(() => null);
     }
-    return fetchVoice(s, ctrl.signal).catch(e => { log('voice fallback:', e.message); return null; });
+    return fetchVoice(s, ctrl.signal).catch(e => null);
   });
 
   for (let i = 0; i < sentences.length; i++) {
     const buf = await jobs[i];
-    if (myId !== speechId) return;           // interrupted
+    if (myId !== speechId) return; // interrupted
     if (i === 0) {
-      // Show caption and start mouth animation at the EXACT millisecond voice playback begins
       speakingAnim = true;
       setEmotion(emo);
       caption(text, false);
@@ -1340,12 +1439,14 @@ async function speak(text, emo = 'NEUTRAL', { holdAfter = 2500, firstAudioB64 = 
     if (myId !== speechId) return;
     spokenSoFar += (spokenSoFar ? ' ' : '') + sentences[i];
   }
-  isSpeaking = false; speakingAnim = false; lastSpeechEnd = performance.now();
-  lastInterim = '';
-  // Flush the speaker-tainted recognition session and start a fresh silent session after room reverb clears
-  if (rec && recRunning) { recTaintedBySpeaker = true; try { rec.abort(); } catch (e) {} }
-  setEmotion(emo, holdAfter);
-  scheduleRestart(320);
+  speakingAnim = false;
+  lastSpeechEnd = performance.now();
+  if (myId === speechId) {
+    setTimeout(() => { if (myId === speechId && !thinking) setEmotion(baseState); }, holdAfter);
+  }
+  isSpeaking = false;
+  updateMicBadge('listening');
+  scheduleRestart(100);
 }
 
 function stopSpeaking() {
@@ -1428,6 +1529,9 @@ async function askBrain(prompt, context) {
       const j = await res.json();
       return parseReply(j.choices?.[0]?.message?.content || '');
     }
+    if (!hasBridge()) {
+      return getOfflineReply(prompt);
+    }
     const res = await fetch(`${bridgeBase()}/api/chat`, {
       method: 'POST', signal,
       headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS },
@@ -1461,44 +1565,50 @@ const HARD_STOP_RE = /\b(hard stop|emergency stop|halt|freeze now|brake)\b|(اق
 function getOfflineReply(text) {
   const ar = isArabic(text);
   const t = text.toLowerCase();
-  if (/\b(who are you|what is your name)\b|مين إنتي|مين انتي|اسمك إيه|اسمك ايه/i.test(t)) {
+  if (/(who are you|what is your name)|مين إنتي|مين انتي|اسمك إيه|اسمك ايه/i.test(t)) {
     return {
-      text: ar ? 'أنا أورا، روبوت الاستقبال لفرع IEEE RAS في الجامعة المصرية اليابانية!' : "I'm AURA, the reception robot of the IEEE RAS Student Branch at E-JUST!",
+      text: ar ? 'أنا أورا، روبوت الاستقبال لفرع IEEE RAS في الجامعة المصرية اليابانية!' : "I'm AURA, the humanoid reception robot of the IEEE RAS Student Branch at E-JUST!",
       emotion: 'HAPPY', action: null
     };
   }
-  if (/\b(president|who is the head|who runs|el sabbagh|sabbagh|amr adly)\b|مين رئيس الجامعة|رئيس الجامعة|أحمد الصباغ|احمد الصباغ|الصباغ|عمرو عدلي/i.test(t)) {
+  if (/(president|who is the head|who runs|el sabbagh|sabbagh|amr adly)|مين رئيس الجامعة|رئيس الجامعة|أحمد الصباغ|احمد الصباغ|الصباغ|عمرو عدلي/i.test(t)) {
     return {
       text: ar ? 'رئيس الجامعة المصرية اليابانية هو الأستاذ الدكتور أحمد الصباغ، شرف كبير وجوده معنا اليوم في قمة IEEE RAS!' : "The President of E-JUST is Prof. Ahmed El-Sabbagh. It's an honor to welcome him to the IEEE RAS MENA Summit!",
       emotion: 'HAPPY', action: null
     };
   }
-  if (/\b(what is ieee|ieee ras|summit|mena)\b|إيه هو ieee|قمة ieee|يعني إيه ieee/i.test(t)) {
+  if (/(what is ieee|ieee ras|summit|mena)|إيه هو ieee|قمة ieee|يعني إيه ieee/i.test(t)) {
     return {
       text: ar ? 'دي قمة IEEE RAS لمنطقة الشرق الأوسط وشمال أفريقيا، بنستعرض فيها أحدث أبحاث الروبوتات والذكاء الاصطناعي!' : 'This is the IEEE RAS MENA Summit, showcasing cutting-edge robotics and AI here at E-JUST!',
       emotion: 'HAPPY', action: null
     };
   }
-  if (/\b(what can you do|features|abilities)\b|بتعملي إيه|تقدري تعملي إيه|إيه وظيفتك/i.test(t)) {
+  if (/(what can you do|features|abilities)|بتعملي إيه|تقدري تعملي إيه|إيه وظيفتك/i.test(t)) {
     return {
-      text: ar ? 'أقدر أرحب بضيوف الـ VIP، وأقرأ كروت الـ NFC، وأوصلكم للقاعات عبر تتبع المسار، وأتكلم معاكم!' : 'I can welcome VIP guests, scan university NFC cards, escort you to summit halls, and chat with you!',
+      text: ar ? 'أقدر أرحب بضيوف الـ VIP، وأقرأ كروت الـ NFC، وأوصلكم للقاعات عبر تتبع المسار، وأتحرك بأوامر الصوت، وأتكلم معاكم!' : 'I can welcome VIP guests, verify university NFC cards, escort you to summit halls, drive via voice commands, and chat with you!',
       emotion: 'HAPPY', action: null
     };
   }
-  if (/\b(thank you|thanks|great job|awesome)\b|شكرا|شكراً|تسلمي|شاطرة|برافو/i.test(t)) {
+  if (/(thank you|thanks|great job|awesome)|شكرا|شكراً|تسلمي|شاطرة|برافو/i.test(t)) {
     return {
-      text: ar ? 'العفو! تحت أمرك، واستمتع بيومك في قمة IEEE RAS!' : "You're very welcome! Enjoy your time at the IEEE RAS MENA Summit!",
+      text: ar ? 'العفو! تحت أمرك، واستمتع بيومك في قمة IEEE RAS بالجامعة!' : "You're very welcome! Enjoy your time at the IEEE RAS MENA Summit!",
       emotion: 'LOVE', action: null
     };
   }
-  if (/\b(hello|hi|hey|good morning|welcome)\b|أهلا|اهلاً|مرحبا|صباح الخير|سلام/i.test(t)) {
+  if (/(hello|hi|hey|good morning|welcome)|أهلا|اهلاً|مرحبا|صباح الخير|سلام|ازيك|إزيك/i.test(t)) {
     return {
-      text: ar ? 'أهلاً بيك! نورت قمة IEEE RAS في E-JUST، أقدر أساعدك في إيه؟' : 'Hi there! Welcome to the IEEE RAS MENA Summit at E-JUST. How can I help you?',
+      text: ar ? 'أهلاً بيك! نورت قمة IEEE RAS في الجامعة المصرية اليابانية، أقدر أساعدك في إيه؟' : 'Hi there! Welcome to the IEEE RAS MENA Summit at E-JUST. How can I help you today?',
+      emotion: 'HAPPY', action: null
+    };
+  }
+  if (/(how are you|how do you do)|عاملة إيه|اخبارك|إيه الأخبار/i.test(t)) {
+    return {
+      text: ar ? 'أنا بخير ومتحمسة جدا لقمة الروبوتات اليوم! تحب تروح أي قاعة؟' : "I'm doing fantastic and thrilled for the robotics summit! Would you like directions to any hall?",
       emotion: 'HAPPY', action: null
     };
   }
   return {
-    text: ar ? 'أهلاً بيك في قمة IEEE RAS بالجامعة المصرية اليابانية! لو محتاج تروح أي قاعة مرر كارتك أو اسألني.' : 'Welcome to the IEEE RAS MENA Summit at E-JUST! If you need directions to a hall, scan your card or just ask me.',
+    text: ar ? 'أهلاً بيك في قمة IEEE RAS بالجامعة المصرية اليابانية! لو محتاج تروح أي قاعة مرر كارتك أو وجهني بصوتك.' : 'Welcome to the IEEE RAS MENA Summit at E-JUST! If you need directions to a hall, scan your card or guide me with your voice.',
     emotion: 'HAPPY', action: null
   };
 }
@@ -1633,6 +1743,35 @@ async function handleTurn(userText, context) {
    4. EARS — single-utterance Android-native recognition (continuous=false),
       100% immune to speaker self-echo, with keyword & touch barge-in
    ============================================================================= */
+function updateMicBadge(state, detail = '') {
+  const b = $('micBadge');
+  if (!b) return;
+  b.className = '';
+  if (state === 'blocked') {
+    b.classList.add('blocked');
+    b.textContent = '⚠️ MIC BLOCKED (TAP TO ALLOW)';
+  } else if (state === 'hearing') {
+    b.classList.add('hearing');
+    b.textContent = detail ? `👂 ${detail}` : '👂 HEARING...';
+  } else if (state === 'thinking') {
+    b.classList.add('hearing');
+    b.textContent = '🧠 THINKING...';
+  } else if (state === 'speaking') {
+    b.classList.add('speaking');
+    b.textContent = '🔊 SPEAKING';
+  } else if (state === 'listening') {
+    b.textContent = '🎙️ LISTENING';
+  } else {
+    b.textContent = '🎙️ TAP TO WAKE';
+  }
+}
+
+function updateLangBadge() {
+  const l = $('langBadge');
+  if (!l) return;
+  l.textContent = (cfg.lang === 'ar-EG') ? '🌐 عربي' : '🌐 EN';
+}
+
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, recRunning = false, awake = false, restartListenTimer = null, interruptedContext = null;
 let lastInterim = '', recTaintedBySpeaker = false;
@@ -1712,11 +1851,12 @@ function initRecognition() {
   rec.maxAlternatives = 1;
   rec.lang = cfg.lang;
 
-  rec.onstart = () => {
+    rec.onstart = () => {
     recRunning = true;
     lastInterim = '';
     clearTimeout(interimCommitTimer);
     recTaintedBySpeaker = isSpeaking || (performance.now() - lastSpeechEnd < 450);
+    if (!isSpeaking) updateMicBadge('listening');
   };
 
   rec.onresult = (ev) => {
@@ -1773,6 +1913,7 @@ function initRecognition() {
     // If interim speech remains unchanged for 650ms, the user has finished speaking!
     lastInterim = interim.trim();
     caption(lastInterim + ' …', true);
+    updateMicBadge('hearing', lastInterim.slice(0, 22));
 
     clearTimeout(interimCommitTimer);
     if (lastInterim && lastInterim.length >= 3) {
@@ -1789,17 +1930,19 @@ function initRecognition() {
     }
   };
 
-  rec.onerror = (e) => {
+    rec.onerror = (e) => {
     recRunning = false;
     lastInterim = '';
     clearTimeout(interimCommitTimer);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      notice('Microphone blocked. Allow mic access and open the HTTPS link.', 0);
+      notice('Microphone blocked. Tap the mic button above to allow access.', 0);
+      updateMicBadge('blocked');
       awake = false;
       setEmotion('SAD');
     } else {
       if (e.error !== 'no-speech' && e.error !== 'aborted') log('rec notice:', e.error);
-      scheduleRestart(150);
+      if (!isSpeaking) updateMicBadge('listening');
+      scheduleRestart(100);
     }
   };
 
@@ -1847,12 +1990,81 @@ const prevCanvas = $('camPreview'), pctx = prevCanvas.getContext('2d');
 const small = document.createElement('canvas'); small.width = 64; small.height = 48;
 const sctx = small.getContext('2d', { willReadFrequently: true });
 
-async function initCamera() {
+let camViewActive = false;
+let currentFacingMode = 'user';
+let activeVideoStream = null;
+
+async function startCameraStream(facingMode = 'user') {
+  currentFacingMode = facingMode;
+  if (activeVideoStream) {
+    try { activeVideoStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+  }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
-    cam.srcObject = stream; await cam.play();
-    log('camera on');
-  } catch (e) { log('camera unavailable:', e.message); return; }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
+    activeVideoStream = stream;
+    cam.srcObject = stream;
+    try { cam.play().catch(() => {}); } catch (e) {}
+    const full = $('fullCamVideo');
+    if (full) {
+      full.srcObject = stream;
+      full.style.transform = (facingMode === 'user') ? 'scaleX(-1)' : 'none';
+      if (camViewActive) {
+        try { full.play().catch(() => {}); } catch (e) {}
+      }
+    }
+    log('camera stream on:', facingMode);
+  } catch (e) {
+    log('camera stream notice:', e.message);
+  }
+}
+
+async function openCameraFullscreen() {
+  ensureAudio();
+  $('camView').style.display = 'block';
+  camViewActive = true;
+  try {
+    if (document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+    }
+  } catch (e) {}
+  resizeCamHud();
+  if (!activeVideoStream) {
+    await startCameraStream(currentFacingMode);
+  }
+  const full = $('fullCamVideo');
+  if (full) {
+    try { full.play().catch(() => {}); } catch (e) {}
+  }
+}
+
+function closeCameraFullscreen() {
+  $('camView').style.display = 'none';
+  camViewActive = false;
+  try {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
+  } catch (e) {}
+}
+
+const camHud = $('camHudCanvas');
+const camCtx = camHud ? camHud.getContext('2d') : null;
+function resizeCamHud() {
+  if (!camHud) return;
+  camHud.width = window.innerWidth;
+  camHud.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCamHud);
+
+async function initCamera() {
+  await startCameraStream(currentFacingMode);
   try {
     const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
     const files = await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
@@ -1899,11 +2111,57 @@ function trackLoop(now = performance.now()) {
     } else f = detectFallback();
   } catch (e) { /* skip frame */ }
 
-  if (cfg.camPrev) {
+    if (cfg.camPrev) {
     prevCanvas.style.display = 'block';
     pctx.drawImage(cam, 0, 0, 160, 120);
     if (f) { pctx.strokeStyle = '#00e5ff'; pctx.lineWidth = 2; const s = f.size * 160; pctx.strokeRect(f.cx * 160 - s / 2, f.cy * 120 - s / 2, s, s); }
   } else prevCanvas.style.display = 'none';
+
+  // Render Fullscreen Camera HUD Overlay
+  if (camViewActive && camCtx && camHud) {
+    const w = camHud.width, h = camHud.height;
+    camCtx.clearRect(0, 0, w, h);
+
+    // Center crosshairs
+    camCtx.strokeStyle = 'rgba(0, 229, 255, 0.25)';
+    camCtx.lineWidth = 1;
+    camCtx.beginPath();
+    camCtx.moveTo(w / 2 - 35, h / 2); camCtx.lineTo(w / 2 + 35, h / 2);
+    camCtx.moveTo(w / 2, h / 2 - 35); camCtx.lineTo(w / 2, h / 2 + 35);
+    camCtx.stroke();
+
+    if (f) {
+      const boxW = f.size * w * 1.25;
+      const boxH = boxW * 1.25;
+      const boxX = (currentFacingMode === 'user') ? (1 - f.cx) * w - boxW / 2 : f.cx * w - boxW / 2;
+      const boxY = f.cy * h - boxH / 2;
+
+      // Draw neon corner brackets
+      camCtx.strokeStyle = '#00e5ff';
+      camCtx.lineWidth = 2.5;
+      const len = Math.min(22, boxW * 0.25);
+
+      // Top-left
+      camCtx.beginPath(); camCtx.moveTo(boxX, boxY + len); camCtx.lineTo(boxX, boxY); camCtx.lineTo(boxX + len, boxY); camCtx.stroke();
+      // Top-right
+      camCtx.beginPath(); camCtx.moveTo(boxX + boxW - len, boxY); camCtx.lineTo(boxX + boxW); camCtx.lineTo(boxX + boxW, boxY + len); camCtx.stroke();
+      // Bottom-left
+      camCtx.beginPath(); camCtx.moveTo(boxX, boxY + boxH - len); camCtx.lineTo(boxX, boxY + boxH); camCtx.lineTo(boxX + len, boxY + boxH); camCtx.stroke();
+      // Bottom-right
+      camCtx.beginPath(); camCtx.moveTo(boxX + boxW - len, boxY + boxH); camCtx.lineTo(boxX + boxW); camCtx.lineTo(boxX + boxW - len, boxY + boxH); camCtx.stroke();
+
+      // Label
+      camCtx.font = '11px ui-monospace, Consolas, monospace';
+      camCtx.fillStyle = '#00e5ff';
+      camCtx.fillText(`TARGET LOCKED: GUEST [X:${Math.round(f.cx * 100)}% Y:${Math.round(f.cy * 100)}%]`, boxX, boxY - 8);
+
+      const tInfo = $('camTargetInfo');
+      if (tInfo) tInfo.textContent = 'TARGET: TRACKED';
+    } else {
+      const tInfo = $('camTargetInfo');
+      if (tInfo) tInfo.textContent = 'TARGET: SCANNING';
+    }
+  }
 
   if (f) {
     // Raw front-camera frames are NOT mirrored: a visitor on the screen's right appears on the image's left.
@@ -2287,13 +2545,15 @@ async function wake() {
   $('wake').style.display = 'none';
   ensureAudio();
   prewarmClientAudio();
-  try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch (e) {}
+  // ONLY camera option has fullscreen capability; normal waking stays within standard canvas
   try { await screen.orientation.lock('landscape'); } catch (e) {}
   keepScreenOn();
   baseState = 'NEUTRAL';
   setEmotion('SURPRISED', 500);   // little "oh!" when waking up
   initRecognition(); startRec();
   initCamera();
+  updateLangBadge();
+  updateMicBadge('listening');
   setTimeout(() => {
     const t = cfg.lang === 'ar-EG' ? 'أهلاً! أنا أورا. نورت قمة IEEE RAS في الجامعة المصرية اليابانية!' : "Hi! I'm AURA. Welcome to the IEEE RAS MENA Summit at E-JUST!";
     history.push({ role: 'model', text: t });
@@ -2301,7 +2561,47 @@ async function wake() {
   }, 450);
 }
 
-// Tap = wake or instant interrupt (barge-in) while speaking. Long-press (1 s) = settings. Double-tap = fullscreen.
+// Top Bar & Camera Action Handlers
+$('camBtn').onclick = (e) => { e.stopPropagation(); openCameraFullscreen(); };
+$('camCloseBtn').onclick = (e) => { e.stopPropagation(); closeCameraFullscreen(); };
+$('camFlipBtn').onclick = async (e) => {
+  e.stopPropagation();
+  const nextMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+  await startCameraStream(nextMode);
+};
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && camViewActive) closeCameraFullscreen();
+});
+
+$('langBadge').onclick = (e) => {
+  e.stopPropagation();
+  ensureAudio();
+  const nextLang = (cfg.lang === 'ar-EG') ? 'en-US' : 'ar-EG';
+  setLang(nextLang);
+  updateLangBadge();
+  if (awake) {
+    const ack = (nextLang === 'ar-EG') ? 'يلا نتكلم عربي!' : 'Switched to English!';
+    speak(ack, 'HAPPY', { holdAfter: 1500 });
+  }
+};
+
+$('micBadge').onclick = async (e) => {
+  e.stopPropagation();
+  ensureAudio();
+  awake = true;
+  $('wake').style.display = 'none';
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    s.getTracks().forEach(t => t.stop()); // release audio hardware immediately
+  } catch (err) {}
+  initRecognition();
+  startRec();
+  updateMicBadge('listening');
+};
+
+$('wake').onclick = () => wake();
+
+// Tap = wake or instant interrupt (barge-in) while speaking. Long-press (1 s) = settings.
 let pressTimer = null, lastTap = 0;
 canvas.addEventListener('pointerdown', () => {
   pressTimer = setTimeout(() => { pressTimer = null; openSettings(); }, 1000);
@@ -2315,8 +2615,7 @@ canvas.addEventListener('pointerup', () => {
     return;
   }
   const now = performance.now();
-  if (now - lastTap < 320) { try { document.documentElement.requestFullscreen(); } catch (e) {} }
-  else { setEmotion('HAPPY', 1200); }   // a tap when idle is a friendly "boop"
+  setEmotion('HAPPY', 1200);   // a tap when idle is a friendly "boop"
   lastTap = now;
 });
 canvas.addEventListener('pointerleave', () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
