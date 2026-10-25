@@ -349,7 +349,8 @@ class ServerCallbacks : public BLEServerCallbacks {
     }
     void onDisconnect(BLEServer* pServer) {
         deviceConnected = false;
-        Serial.println("[BLE] Phone Disconnected. Restarting advertising...");
+        Serial.println("[BLE] Device Disconnected. Restarting advertising...");
+        pServer->startAdvertising(); // Critical: ESP32 stops advertising upon disconnect unless restarted!
     }
 };
 
@@ -512,6 +513,8 @@ void setup() {
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SERVICE_UUID);
     pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x06);  // Improves discovery on Windows & iOS
+    pAdvertising->setMinPreferred(0x12);
     BLEDevice::startAdvertising();
 
     Serial.println("[BLE] Nordic UART Ready! Device name: AURA-EJUST-BOT");

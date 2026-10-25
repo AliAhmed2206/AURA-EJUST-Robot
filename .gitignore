@@ -1,15 +1,1 @@
-# Python cache & logs
-__pycache__/
-*.py[cod]
-*$py.class
-*.log
-cloudflared.log
-
-# Temporary test files & backups
-test_*.mp3
-test_*.py
-*_backup.py
-*_backup.html
-CAD/debug_log.txt
-
-*.zip
+.vercel

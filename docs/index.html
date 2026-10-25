@@ -2337,25 +2337,39 @@ function animateHeadShake() {
 
 async function connectBle() {
   if (!navigator.bluetooth) {
-    notice('Web Bluetooth requires Chrome on Android or Desktop over HTTPS.', 5000);
+    notice('Web Bluetooth requires Chrome or Edge over HTTPS (or on Android Chrome).', 5000);
     log('Web Bluetooth not available (needs Chrome + HTTPS)');
     return;
   }
   try {
+    notice('Scanning for Bluetooth devices...', 2500);
+    // acceptAllDevices: true allows pairing with all nearby BLE devices regardless of payload splitting
     const dev = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [NUS] }, { namePrefix: 'AURA' }, { namePrefix: 'ESP32' }, { namePrefix: 'IEEE' }],
-      optionalServices: [NUS]
+      acceptAllDevices: true,
+      optionalServices: [
+        NUS,
+        '0000ffe0-0000-1000-8000-00805f9b34fb',
+        'battery_service',
+        'device_information',
+        'generic_access'
+      ]
     });
     bleDev = dev;
     dev.addEventListener('gattserverdisconnected', () => {
       bleRx = null;
       hwState.connected = false;
       updateHwUi();
+      notice('ESP32 disconnected — attempting reconnect...', 4000);
       log('ESP32 disconnected — will attempt auto-reconnect...');
       setTimeout(tryReconnectBle, 1500);
     });
     await attachBleGatt(dev);
-  } catch (e) { log('BLE error:', e.message); }
+  } catch (e) {
+    if (e.name !== 'NotFoundError') {
+      notice(`Bluetooth note: ${e.message}`, 5000);
+    }
+    log('BLE error:', e.message);
+  }
 }
 
 async function tryReconnectBle() {
@@ -2368,23 +2382,41 @@ async function tryReconnectBle() {
 }
 
 async function attachBleGatt(dev) {
-  const server = await dev.gatt.connect();
-  const svc = await server.getPrimaryService(NUS);
-  bleRx = await svc.getCharacteristic(NUS_RX);
-  const tx = await svc.getCharacteristic(NUS_TX);
-  await tx.startNotifications();
-  tx.addEventListener('characteristicvaluechanged', (ev) => {
-    bleBuf += new TextDecoder().decode(ev.target.value);
-    const lines = bleBuf.split('\n'); bleBuf = lines.pop();
-    lines.map(l => l.trim()).filter(Boolean).forEach(onEsp32);
-  });
-  hwState.connected = true;
-  hwState.deviceName = dev.name || 'AURA-EJUST-BOT';
-  updateHwUi();
-  showNfcBanner(`🔗 Connected to ${hwState.deviceName}`, 'valid', 3500);
-  log('ESP32 connected:', dev.name);
-  await sendBle({ cmd: 'HELLO', client: 'AURA_SCREEN_APP' });
-  if (hwState.allowAnyNfc) await sendBle({ cmd: 'ALLOW_ANY_NFC', allow: true });
+  try {
+    notice(`Connecting to ${dev.name || 'device'}...`, 2500);
+    const server = await dev.gatt.connect();
+    let svc;
+    try {
+      svc = await server.getPrimaryService(NUS);
+    } catch (noNus) {
+      log('Primary NUS not found, trying fallback serial UUID:', noNus.message);
+      try {
+        svc = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
+      } catch (noFfe0) {
+        throw new Error(`Connected to ${dev.name || 'Device'}, but Nordic UART Service was not found. Please ensure VIP_Humanoid_ESP32.ino is uploaded to the board.`);
+      }
+    }
+    bleRx = await svc.getCharacteristic(NUS_RX).catch(() => svc.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb'));
+    const tx = await svc.getCharacteristic(NUS_TX).catch(() => svc.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb'));
+    await tx.startNotifications();
+    tx.addEventListener('characteristicvaluechanged', (ev) => {
+      bleBuf += new TextDecoder().decode(ev.target.value);
+      const lines = bleBuf.split('
+'); bleBuf = lines.pop();
+      lines.map(l => l.trim()).filter(Boolean).forEach(onEsp32);
+    });
+    hwState.connected = true;
+    hwState.deviceName = dev.name || 'AURA-EJUST-BOT';
+    updateHwUi();
+    showNfcBanner(`🔗 Connected to ${hwState.deviceName}`, 'valid', 3500);
+    notice(`Connected to ${hwState.deviceName}!`, 3500);
+    log('ESP32 connected:', dev.name);
+    await sendBle({ cmd: 'HELLO', client: 'AURA_SCREEN_APP' });
+    if (hwState.allowAnyNfc) await sendBle({ cmd: 'ALLOW_ANY_NFC', allow: true });
+  } catch (err) {
+    notice(`Connection note: ${err.message}`, 6000);
+    log('attachBleGatt error:', err.message);
+  }
 }
 
 async function sendBle(obj) {
