@@ -48,10 +48,12 @@
   #micBadge.blocked { border-color: #ff4081; color: #ff80ab; background: rgba(35,10,25,.88); animation: pulseWarn 1.2s infinite; }
   @keyframes pulseWarn { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
-  #camBtn { padding: 6px 15px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+  #camBtn, #settingsBtn { padding: 6px 15px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: .08em;
     background: rgba(11,7,20,.85); border: 1px solid #00e5ff; color: #00e5ff; cursor: pointer;
     backdrop-filter: blur(6px); box-shadow: 0 0 12px rgba(0,229,255,.25); transition: all .25s ease; user-select: none; }
-  #camBtn:hover { background: #00e5ff; color: #05030a; box-shadow: 0 0 20px rgba(0,229,255,.6); }
+  #camBtn:hover, #settingsBtn:hover { background: #00e5ff; color: #05030a; box-shadow: 0 0 20px rgba(0,229,255,.6); }
+  #settingsBtn { border-color: #b388ff; color: #d1c4e9; box-shadow: 0 0 12px rgba(179,136,255,.25); }
+  #settingsBtn:hover { background: #b388ff; color: #05030a; box-shadow: 0 0 20px rgba(179,136,255,.6); }
 
   #nfcBanner { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: 99px;
     font-size: 13px; font-weight: 600; letter-spacing: .06em; background: rgba(11,7,20,.9); border: 1px solid #00e5ff;
@@ -108,6 +110,7 @@
   <div id="micBadge" title="Microphone Status (Tap to unblock/allow)">🎙️ LISTENING</div>
   <div style="flex:1"></div>
   <button id="camBtn" title="See what AURA sees in Fullscreen">📷 CAMERA</button>
+  <button id="settingsBtn" title="AURA Brain, Face Style & Hardware Settings">⚙️ SETTINGS</button>
 </div>
 <div id="nfcBanner"></div>
 <div id="wake">TAP ANYWHERE TO WAKE AURA ⚡</div>
@@ -2813,6 +2816,7 @@ async function wake() {
 
 // Top Bar & Camera Action Handlers
 $('camBtn').onclick = (e) => { e.stopPropagation(); openCameraFullscreen(); };
+$('settingsBtn').onclick = (e) => { e.stopPropagation(); openSettings(); };
 $('camCloseBtn').onclick = (e) => { e.stopPropagation(); closeCameraFullscreen(); };
 $('camFlipBtn').onclick = async (e) => {
   e.stopPropagation();
