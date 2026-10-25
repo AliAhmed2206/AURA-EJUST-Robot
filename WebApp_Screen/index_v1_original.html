@@ -1,0 +1,2428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>AURA-EJUST v3.0 — IEEE RAS × E-JUST VIP Reception & Speech Brain</title>
+  <style>
+    :root {
+      --bg-obsidian: #060408;
+      --bg-card: rgba(18, 12, 24, 0.85);
+      --ejust-red: #C0121F;
+      --ejust-red-glow: rgba(192, 18, 31, 0.5);
+      --ras-purple: #621B6D;
+      --ras-crimson: #860038;
+      --ras-violet: #9c27b0;
+      --imperial-gold: #C8A45D;
+      --neon-cyan: #00e5ff;
+      --neon-magenta: #ff1744;
+      --neon-green: #00e676;
+      --blush-pink: rgba(255, 64, 129, 0.65);
+      --text-white: #f8f6fa;
+      --text-muted: #b0a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+    body {
+      background: radial-gradient(circle at 15% 15%, rgba(98, 27, 109, 0.32), transparent 50%),
+                  radial-gradient(circle at 85% 85%, rgba(192, 18, 31, 0.28), transparent 50%),
+                  var(--bg-obsidian);
+      color: var(--text-white);
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border: 2px solid rgba(192, 18, 31, 0.4);
+    }
+
+    /* Top Branding & Telemetry Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 8px;
+      gap: 8px;
+      z-index: 20;
+    }
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: nowrap;
+    }
+    .badge-ras {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: linear-gradient(135deg, var(--ras-purple), var(--ras-crimson));
+      border: 1px solid var(--ras-violet);
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-weight: 900;
+      font-size: 11px;
+      letter-spacing: 1.2px;
+      color: #fff;
+      box-shadow: 0 0 12px rgba(156, 39, 176, 0.35);
+    }
+    .badge-ejust {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(135deg, #ffffff, #f0eef5);
+      border: 1.5px solid var(--ejust-red);
+      padding: 3px 10px;
+      border-radius: 8px;
+      font-weight: 900;
+      font-size: 11px;
+      letter-spacing: 1.2px;
+      color: #111116;
+      box-shadow: 0 0 12px rgba(192, 18, 31, 0.3);
+    }
+    .robot-id {
+      font-size: 10px;
+      color: var(--imperial-gold);
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      display: none;
+    }
+    @media (min-width: 480px) {
+      .robot-id { display: inline-block; }
+    }
+
+    .telemetry-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 9px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .pill.active {
+      border-color: var(--neon-cyan);
+      color: #fff;
+      background: rgba(0, 229, 255, 0.12);
+    }
+    .pill.connected {
+      border-color: var(--neon-green);
+      color: #fff;
+      background: rgba(0, 230, 118, 0.12);
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #757575;
+      display: inline-block;
+    }
+    .dot.green { background: #00e676; box-shadow: 0 0 8px #00e676; animation: pulse 1.6s infinite; }
+    .dot.cyan { background: #00e5ff; box-shadow: 0 0 8px #00e5ff; animation: pulse 1.6s infinite; }
+    .dot.gold { background: var(--imperial-gold); box-shadow: 0 0 8px var(--imperial-gold); }
+    .dot.red { background: #ff1744; box-shadow: 0 0 8px #ff1744; }
+
+    .btn-icon {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-icon:hover, .btn-icon:active {
+      background: rgba(192, 18, 31, 0.3);
+      border-color: var(--ejust-red);
+    }
+
+    /* Main Central Robot Face & Brain Canvas */
+    .face-container {
+      flex: 1;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 6px 0;
+      border-radius: 20px;
+      background: linear-gradient(165deg, rgba(22, 14, 30, 0.95), rgba(10, 6, 14, 0.98));
+      border: 1px solid rgba(192, 18, 31, 0.35);
+      box-shadow: inset 0 0 40px rgba(98, 27, 109, 0.3), 0 12px 35px rgba(0, 0, 0, 0.7);
+      overflow: hidden;
+    }
+    #faceCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Emotion HUD Badge */
+    .emotion-hud {
+      position: absolute;
+      top: 10px;
+      left: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--imperial-gold);
+      backdrop-filter: blur(8px);
+      z-index: 10;
+    }
+    .gaze-hud {
+      position: absolute;
+      top: 10px;
+      right: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(0, 229, 255, 0.3);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--neon-cyan);
+      backdrop-filter: blur(8px);
+      z-index: 10;
+    }
+
+    /* Live Speech Subtitles Balloon */
+    .subtitles-box {
+      position: absolute;
+      bottom: 12px;
+      left: 14px;
+      right: 14px;
+      background: rgba(14, 10, 20, 0.88);
+      border: 1px solid rgba(192, 18, 31, 0.4);
+      border-left: 4px solid var(--ras-violet);
+      border-radius: 10px;
+      padding: 8px 14px;
+      backdrop-filter: blur(10px);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 10;
+      transition: all 0.3s ease;
+    }
+    .sub-speaker {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: var(--imperial-gold);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sub-text {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      line-height: 1.35;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+      max-height: 52px;
+      overflow-y: auto;
+    }
+
+    /* VIP Welcome Banner & Escort Telemetry Panel */
+    .vip-stage {
+      background: var(--bg-card);
+      border: 1px solid rgba(192, 18, 31, 0.4);
+      border-radius: 14px;
+      padding: 10px 14px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      position: relative;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+    .nfc-badge-visual {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 80px;
+    }
+    .nfc-ring {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      border: 3px solid var(--neon-magenta);
+      box-shadow: 0 0 18px var(--neon-magenta), inset 0 0 14px var(--ras-violet);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      animation: breathe 2.2s ease-in-out infinite;
+      transition: all 0.3s;
+    }
+    .nfc-ring.active {
+      border-color: var(--imperial-gold);
+      box-shadow: 0 0 28px var(--imperial-gold), inset 0 0 20px var(--ejust-red);
+      transform: scale(1.08);
+    }
+    .nfc-tag-label {
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      color: var(--imperial-gold);
+      margin-top: 4px;
+      text-transform: uppercase;
+    }
+    .vip-details {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      overflow: hidden;
+    }
+    .state-pill {
+      align-self: flex-start;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 5px;
+      background: rgba(192, 18, 31, 0.25);
+      border: 1px solid var(--ejust-red);
+      color: #ff6b78;
+    }
+    .guest-title {
+      font-size: 18px;
+      font-weight: 900;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-shadow: 0 2px 10px rgba(192, 18, 31, 0.4);
+    }
+    .guest-arabic-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--imperial-gold);
+      direction: rtl;
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dest-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      margin-top: 2px;
+    }
+    .route-bar {
+      margin-top: 4px;
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .route-fill {
+      height: 100%;
+      width: 15%;
+      background: linear-gradient(90deg, var(--ras-purple), var(--ejust-red), var(--imperial-gold));
+      transition: width 0.4s ease;
+    }
+
+    /* Bottom Control & Simulation Dock */
+    .footer-dock {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sim-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+    }
+    .action-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-sim {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text-white);
+      padding: 7px 4px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .btn-sim:active, .btn-sim:hover {
+      background: linear-gradient(135deg, var(--ejust-red), var(--ras-purple));
+      border-color: var(--imperial-gold);
+    }
+    .btn-action {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s;
+    }
+    .btn-mic {
+      background: rgba(0, 229, 255, 0.12);
+      border-color: var(--neon-cyan);
+      color: var(--neon-cyan);
+    }
+    .btn-mic.listening {
+      background: rgba(255, 23, 68, 0.25);
+      border-color: var(--neon-magenta);
+      color: #fff;
+      animation: pulse 1.2s infinite;
+    }
+    .btn-ble {
+      background: rgba(98, 27, 109, 0.3);
+      border-color: var(--ras-violet);
+      color: #fff;
+    }
+    .btn-ble.connected {
+      background: rgba(0, 230, 118, 0.18);
+      border-color: var(--neon-green);
+      color: #00e676;
+    }
+    .btn-continuous {
+      background: rgba(200, 164, 93, 0.15);
+      border-color: var(--imperial-gold);
+      color: var(--imperial-gold);
+    }
+    .btn-continuous.active {
+      background: rgba(0, 230, 118, 0.22);
+      border-color: var(--neon-green);
+      color: #00e676;
+      box-shadow: 0 0 10px rgba(0, 230, 118, 0.3);
+    }
+    .btn-reset {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      flex: 0 0 auto;
+      padding: 8px 12px;
+    }
+
+    /* Picture-in-Picture Front Camera Tracking Feed */
+    .cam-pip {
+      position: absolute;
+      top: 50px;
+      right: 14px;
+      width: 110px;
+      height: 85px;
+      border-radius: 10px;
+      border: 1.5px solid var(--neon-cyan);
+      background: #000;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+    }
+    .cam-pip.hidden {
+      display: none;
+    }
+    #camVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* Mirror front camera */
+    }
+    #camOverlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .cam-tag {
+      position: absolute;
+      bottom: 2px;
+      left: 2px;
+      font-size: 7px;
+      font-weight: 800;
+      padding: 1px 4px;
+      background: rgba(0, 0, 0, 0.7);
+      color: var(--neon-cyan);
+      border-radius: 3px;
+    }
+
+    /* Tap-to-wake prompt banner */
+    .wake-prompt {
+      position: absolute;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, rgba(192, 18, 31, 0.95), rgba(98, 27, 109, 0.95));
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      padding: 6px 16px;
+      border-radius: 20px;
+      border: 1px solid var(--imperial-gold);
+      box-shadow: 0 4px 15px rgba(192, 18, 31, 0.6);
+      cursor: pointer;
+      z-index: 50;
+      animation: pulseWake 1.8s infinite;
+      white-space: nowrap;
+    }
+    @keyframes pulseWake {
+      0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.95; }
+      50% { transform: translateX(-50%) scale(1.04); opacity: 1; }
+    }
+
+    /* Text chat bar */
+    .chat-input-bar {
+      display: flex;
+      gap: 6px;
+      width: 100%;
+      margin-bottom: 6px;
+    }
+    .chat-input-field {
+      flex: 1;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 6px 12px;
+      color: #fff;
+      font-size: 11px;
+      outline: none;
+    }
+    .chat-input-field:focus {
+      border-color: var(--neon-cyan);
+    }
+    .btn-chat-send {
+      background: linear-gradient(135deg, var(--ejust-red), var(--ejust-purple));
+      border: none;
+      color: #fff;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* Settings & Configuration Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(10px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-card {
+      background: #140d1c;
+      border: 1.5px solid var(--ejust-red);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 40px rgba(192, 18, 31, 0.4);
+      overflow: hidden;
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(98, 27, 109, 0.25);
+    }
+    .modal-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--imperial-gold);
+      letter-spacing: 1px;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .modal-body {
+      padding: 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .form-label {
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .form-input, .form-select {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: #fff;
+      font-size: 12px;
+      outline: none;
+    }
+    .form-input:focus, .form-select:focus {
+      border-color: var(--neon-cyan);
+    }
+    .ble-log-box {
+      background: #09050e;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 8px;
+      font-family: monospace;
+      font-size: 10px;
+      color: #00e5ff;
+      height: 80px;
+      overflow-y: auto;
+    }
+    .modal-footer {
+      padding: 10px 18px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.06); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header with Official IEEE RAS & Official E-JUST University Emblems -->
+  <div class="header">
+    <div class="brand-group">
+      <div class="badge-ras">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="#C8A45D" stroke-width="2"/>
+          <path d="M7 16L12 6L17 16H14L12 11L10 16H7Z" fill="#fff"/>
+        </svg>
+        <span>IEEE RAS</span>
+      </div>
+
+      <!-- Official E-JUST University Emblem (Red Sun Disc + 3 Top Bars + Scarab-Lotus Arcs) -->
+      <div class="badge-ejust">
+        <svg width="18" height="20" viewBox="0 0 100 118" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Central Red Sun Disc -->
+          <circle cx="50" cy="50" r="24.5" fill="#E60012"/>
+          <!-- 3 Top Vertical Bars -->
+          <rect x="38" y="5" width="6" height="15" rx="3" fill="#0B0B0F"/>
+          <rect x="47" y="5" width="6" height="15" rx="3" fill="#0B0B0F"/>
+          <rect x="56" y="5" width="6" height="15" rx="3" fill="#0B0B0F"/>
+          <!-- Upper-Left Curved Arc -->
+          <path d="M31 5 L31 25 C21 30 18.5 40 18.5 54 L8 54 C7.5 31 15 12 31 5 Z" fill="#0B0B0F"/>
+          <!-- Upper-Right Curved Arc -->
+          <path d="M69 5 L69 25 C79 30 81.5 40 81.5 54 L92 54 C92.5 31 85 12 69 5 Z" fill="#0B0B0F"/>
+          <!-- Lower-Left Curved Pincer/Crescent Arc with Inner Horn -->
+          <path d="M8 61 L19.5 61 C22 68 27 73 35 76.5 C27 75.5 21.5 72 19.5 68 C21 82 29.5 93 43.8 97 L43.8 114 C21 109 8 88 8 61 Z" fill="#0B0B0F"/>
+          <!-- Lower-Right Curved Pincer/Crescent Arc with Inner Horn -->
+          <path d="M92 61 L80.5 61 C78 68 73 73 65 76.5 C73 75.5 78.5 72 80.5 68 C79 82 70.5 93 56.2 97 L56.2 114 C79 109 92 88 92 61 Z" fill="#0B0B0F"/>
+        </svg>
+        <span style="font-family: Georgia, 'Times New Roman', serif; font-weight: 900; letter-spacing: 0.8px; color: #0B0B0F;">E-JUST</span>
+      </div>
+
+      <div class="robot-id">AURA-EJUST v3.0</div>
+    </div>
+
+    <!-- Live Telemetry Status Pills -->
+    <div class="telemetry-group">
+      <div class="pill" id="blePill" onclick="connectBle()" title="ESP32 BLE Nordic UART Link">
+        <span class="dot" id="bleDot"></span>
+        <span id="bleText">BLE: OFF</span>
+      </div>
+      <div class="pill" id="visionPill" onclick="toggleCamPip()" title="Front Camera Gaze Tracking">
+        <span class="dot" id="visionDot"></span>
+        <span id="visionText">CAM: READY</span>
+      </div>
+      <div class="pill" id="geminiPill" onclick="openSettings()" title="Gemini Live Conversation Engine">
+        <span class="dot" id="geminiDot"></span>
+        <span id="geminiText">GEMINI: LIVE</span>
+      </div>
+      <button class="btn-icon" onclick="openSettings()" title="Settings">⚙️</button>
+      <button class="btn-icon" onclick="toggleFullScreen()" title="Fullscreen">⛶</button>
+    </div>
+  </div>
+
+  <!-- Main Central Bionic Face & Speech Screen -->
+  <div class="face-container">
+    <canvas id="faceCanvas" onclick="unlockAudioAndListen()"></canvas>
+
+    <div class="wake-prompt" id="wakePrompt" onclick="unlockAudioAndListen()">
+      👆 Tap anywhere to activate voice &amp; speech
+    </div>
+
+    <!-- Contextual Emotion & Gaze HUD Badges -->
+    <div class="emotion-hud" id="emotionBadge">
+      <span id="emotionIcon">😊</span>
+      <span id="emotionText">EMOTION: ATTENTIVE</span>
+    </div>
+
+    <div class="gaze-hud" id="gazeBadge">
+      <span>👁️</span>
+      <span id="gazeText">GAZE: IDLE SCAN</span>
+    </div>
+
+    <!-- Live Speech Subtitles Balloon -->
+    <div class="subtitles-box" id="subBox">
+      <div class="sub-speaker">
+        <span id="subSpeaker">AURA-EJUST v3.0</span>
+        <span id="subStatus">READY</span>
+      </div>
+      <div class="sub-text" id="subText">Welcome to IEEE RAS E-JUST. Please tap your NFC badge on the chest reader to begin escort.</div>
+    </div>
+  </div>
+
+  <!-- Front Camera Picture-in-Picture Tracking Window -->
+  <div class="cam-pip" id="camPip">
+    <video id="camVideo" autoplay playsinline muted></video>
+    <canvas id="camOverlay"></canvas>
+    <span class="cam-tag" id="camTag">GAZE: OFF</span>
+  </div>
+
+  <!-- VIP NFC Tap & Escort Route Guidance Stage -->
+  <div class="vip-stage">
+    <div class="nfc-badge-visual">
+      <div class="nfc-ring" id="nfcHalo">💳</div>
+      <div class="nfc-tag-label" id="nfcSub">TAP VIP CARD</div>
+    </div>
+
+    <div class="vip-details">
+      <span class="state-pill" id="statePill">STANDBY AT RECEPTION DESK</span>
+      <div class="guest-title" id="guestName">Welcome to IEEE RAS E-JUST</div>
+      <div class="guest-arabic-title" id="guestArabic">أهلاً بكم في فرع IEEE RAS بالجامعة المصرية اليابانية (E-JUST)</div>
+      <div class="dest-row">
+        <span>📍</span>
+        <span id="destText">Please Tap Your University / Event NFC Card Below ↓</span>
+      </div>
+      <div class="route-bar">
+        <div class="route-fill" id="routeFill"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Interactive Quick-Test, BLE & Mic Dock -->
+  <div class="footer-dock">
+    <!-- VIP Quick-Test Buttons -->
+    <div class="sim-bar">
+      <button class="btn-sim" onclick="triggerVIP('Prof. Amr Adly', 'أهلاً وسهلاً أ.د. عمرو عدلي — رئيس الجامعة المصرية اليابانية', 'Main Conference Hall', 1, 'A1:B2:C3:D4')">
+        🎓 Prof. Amr (Hall)
+      </button>
+      <button class="btn-sim" onclick="triggerVIP('Dr. Mariam Hassan', 'أهلاً بكِ د. مريم حسن — المتحدث الرئيسي لـ IEEE RAS', 'E-JUST Grand Theatre', 2, 'E5:F6:07:18')">
+        🤖 Dr. Mariam (Theatre)
+      </button>
+      <button class="btn-sim" onclick="triggerVIP('Eng. Youssef Khaled', 'مرحباً م. يوسف خالد — رئيس فرع IEEE RAS E-JUST', 'Robotics Lab & Hall', 1, '12:34:56:78')">
+        ⚡ Eng. Youssef
+      </button>
+      <button class="btn-sim" onclick="simulateNewGuest()">
+        ✨ Custom VIP
+      </button>
+    </div>
+
+    <!-- Optional Typed Chat Bar (Instant conversation even if mic is blocked) -->
+    <div class="chat-input-bar">
+      <input type="text" id="userTextInput" class="chat-input-field" placeholder="Type a message to AURA (or tap mic to speak)..." onkeydown="if(event.key==='Enter') sendTypedText()" />
+      <button class="btn-chat-send" onclick="sendTypedText()">Send</button>
+    </div>
+
+    <!-- Speech & Hardware Control Actions -->
+    <div class="action-bar">
+      <button class="btn-action btn-mic" id="micBtn" onclick="toggleMic()">
+        <span id="micIcon">🎙️</span>
+        <span id="micText">TAP TO SPEAK</span>
+      </button>
+      <button class="btn-action btn-ble" id="bleActionBtn" onclick="connectBle()">
+        <span>📶</span>
+        <span id="bleActionText">PAIR ESP32 (BLE)</span>
+      </button>
+      <button class="btn-action btn-continuous active" id="continuousBtn" onclick="toggleContinuousMode()" title="Toggle Hands-Free Natural Conversation">
+        <span>🔄</span>
+        <span id="continuousText">AUTO-TALK: ON</span>
+      </button>
+      <button class="btn-action btn-sim" onclick="testEmotion('HAPPY', 'Thank you so much AURA, you did an amazing job!')" title="Test Gratitude Emotion">
+        💖 Thank You!
+      </button>
+      <button class="btn-action btn-sim" onclick="testEmotion('CURIOUS', 'Can you tell me about the E-JUST robotics lab?')" title="Test Question Emotion">
+        💡 Ask Question
+      </button>
+      <button class="btn-action btn-reset" onclick="resetStandby(true)" title="Reset to Standby">
+        ↺
+      </button>
+    </div>
+  </div>
+
+  <!-- Settings & Configuration Modal -->
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">⚙️ AURA-EJUST v3.0 SETTINGS</div>
+        <button class="modal-close" onclick="closeSettings()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">AI Conversational Brain Provider</label>
+          <select id="providerSelect" class="form-select" onchange="updateProviderVisibility()">
+            <option value="antigravity-relay">Antigravity Local Relay Bridge (Recommended - Free PC Pro Session)</option>
+            <option value="openrouter">OpenRouter API (Free Models: Llama 3.3 70B, DeepSeek, Claude, Mistral)</option>
+            <option value="gemini">Google Gemini API (Google AI Studio Key / Live WS)</option>
+            <option value="offline-autonomous">Offline Autonomous Smart Dialog (Zero Quota / 100% Free)</option>
+          </select>
+        </div>
+
+        <!-- Antigravity Relay Configuration -->
+        <div id="antigravitySettingsGroup">
+          <div class="form-group">
+            <label class="form-label">Relay Bridge Address (PC Gateway)</label>
+            <input type="text" id="bridgeUrlInput" class="form-input" placeholder="http://192.168.1.19:8080" />
+            <span style="font-size: 9px; color: var(--emerald);">Direct zero-quota connection to your PC's active Antigravity Pro session. Completely bypasses AI Studio billing &amp; limits.</span>
+          </div>
+        </div>
+
+        <!-- OpenRouter Configuration -->
+        <div id="openrouterSettingsGroup" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">OpenRouter API Key</label>
+            <input type="password" id="openRouterKeyInput" class="form-input" placeholder="sk-or-v1-..." />
+            <span style="font-size: 9px; color: var(--imperial-gold);">Cached locally in browser. Free key at openrouter.ai/keys (no credit card required for free models).</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">OpenRouter Model</label>
+            <select id="openRouterModelSelect" class="form-select">
+              <option value="meta-llama/llama-3.3-70b-instruct:free">meta-llama/llama-3.3-70b-instruct:free (Recommended - 100% Free)</option>
+              <option value="deepseek/deepseek-chat">deepseek/deepseek-chat (Ultra Smart &amp; Low Cost)</option>
+              <option value="google/gemini-2.0-flash-001">google/gemini-2.0-flash-001 (Google Flash via OpenRouter)</option>
+              <option value="mistralai/mistral-7b-instruct:free">mistralai/mistral-7b-instruct:free (Free Mistral)</option>
+              <option value="qwen/qwen-2.5-72b-instruct">qwen/qwen-2.5-72b-instruct (Excellent Multilingual Arabic)</option>
+              <option value="anthropic/claude-3.5-haiku">anthropic/claude-3.5-haiku (Fast Claude)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Gemini Configuration -->
+        <div id="geminiSettingsGroup" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">Gemini API Key</label>
+            <input type="password" id="apiKeyInput" class="form-input" placeholder="AIzaSy..." />
+            <span style="font-size: 9px; color: var(--imperial-gold);">Cached locally in browser. Pre-filled with active session key.</span>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Gemini Conversational Model</label>
+            <select id="modelSelect" class="form-select">
+              <option value="gemini-3.8-flash">gemini-3.8-flash (Recommended)</option>
+              <option value="gemini-3.8-live">gemini-3.8-live (Live WebSocket)</option>
+              <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+              <option value="offline-autonomous">Offline Smart Dialog Engine (Zero Quota Needed)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Voice & Persona</label>
+          <select id="voiceSelect" class="form-select">
+            <option value="Aoede">Aoede (Confident & Clear Female)</option>
+            <option value="Puck">Puck (Energetic & Friendly Male)</option>
+            <option value="Kore">Kore (Warm & Dignified Female)</option>
+            <option value="Charon">Charon (Deep & Resonant Male)</option>
+            <option value="native-tts">System Bilingual TTS (en-US / ar-EG)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">ESP32 Wi-Fi AP IP (Fallback)</label>
+          <input type="text" id="esp32IpInput" class="form-input" value="192.168.4.1" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Web Bluetooth (NUS) Raw Packet Monitor</label>
+          <div class="ble-log-box" id="bleLogBox">Ready to connect to Nordic UART Service...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-icon" style="padding: 6px 14px;" onclick="saveSettings()">Save &amp; Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       AURA-EJUST v3.0 — Flagship Bionic Face, Camera Vision, BLE NUS & Gemini Speech
+       ========================================================================== */
+
+    // 1. Core Configuration & State
+    const NORDIC_UART_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+    const NORDIC_RX_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // Phone writes to ESP32
+    const NORDIC_TX_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // ESP32 notifies Phone
+
+    const DEFAULT_API_KEY = 'AIzaSyDrEPiLGYrnqxzvcE9PhAP4LCx-eEAk8gk';
+    let apiProvider = localStorage.getItem('AURA_API_PROVIDER') || 'antigravity-relay';
+    let bridgeUrl = localStorage.getItem('AURA_BRIDGE_URL') || (window.location.origin.startsWith('http') ? window.location.origin : 'http://192.168.1.19:8080');
+    let openRouterKey = localStorage.getItem('AURA_OPENROUTER_KEY') || '';
+    let openRouterModel = localStorage.getItem('AURA_OPENROUTER_MODEL') || 'meta-llama/llama-3.3-70b-instruct:free';
+    let apiKey = localStorage.getItem('AURA_GEMINI_KEY') || DEFAULT_API_KEY;
+    let selectedModel = localStorage.getItem('AURA_GEMINI_MODEL') || 'gemini-3.8-flash';
+    let selectedVoice = localStorage.getItem('AURA_VOICE') || 'Aoede';
+    let esp32Ip = localStorage.getItem('AURA_ESP32_IP') || '192.168.4.1';
+
+    // Bluetooth Objects
+    let bleDevice = null;
+    let bleServer = null;
+    let rxChar = null;
+    let txChar = null;
+    let bleConnected = false;
+
+    // Face & Gaze Tracking State
+    let currentEmotion = 'ATTENTIVE'; // ATTENTIVE, HAPPY, CURIOUS, THINKING, SPEAKING, SURPRISED
+    let emotionTimer = null;
+    let blushAlpha = 0.0;
+    let targetGazeX = 0; // -1 (left) to +1 (right)
+    let targetGazeY = 0; // -1 (up - tall) to +1 (down - short)
+    let currentGazeX = 0;
+    let currentGazeY = 0;
+    let blinkProgress = 0;
+    let isBlinking = false;
+    let nextBlinkTime = performance.now() + 2500;
+    let lipSyncOpen = 0.0;
+    let speechAudioEnergy = 0.0;
+
+    // Conversational & Live Audio State
+    let isContinuousConversation = true;
+    let liveWs = null;
+    let isLiveWsConnected = false;
+    let isLiveAudioPlaying = false;
+    let audioCtx = null;
+    let nextAudioStartTime = 0;
+
+    // Camera Vision State
+    let camStream = null;
+    let faceDetector = null;
+    let visitorNear = false;
+    let visitorDetectionCount = 0;
+    let lastVisitorGreetingTime = 0;
+
+    // Escort & VIP State
+    let escortTimer = null;
+    let activeUid = '';
+    let currentRobotState = 'IDLE';
+
+    const ARABIC_TITLES = {
+      'Prof. Amr Adly': 'أهلاً وسهلاً أ.د. عمرو عدلي — رئيس الجامعة المصرية اليابانية',
+      'Dr. Mariam Hassan': 'أهلاً بكِ د. مريم حسن — المتحدث الرئيسي لـ IEEE RAS',
+      'Eng. Youssef Khaled': 'مرحباً م. يوسف خالد — رئيس فرع IEEE RAS E-JUST'
+    };
+
+    /* ==========================================================================
+       2. Bionic Face Engine (Canvas 60 FPS Animated Eyes & Lip-Sync Mouth)
+       ========================================================================== */
+    const canvas = document.getElementById('faceCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    setTimeout(resizeCanvas, 50);
+
+    function renderFace(now) {
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Smooth gaze interpolation (lerp)
+      currentGazeX += (targetGazeX - currentGazeX) * 0.12;
+      currentGazeY += (targetGazeY - currentGazeY) * 0.12;
+
+      // Handle Blinking logic
+      if (!isBlinking && now > nextBlinkTime) {
+        isBlinking = true;
+        blinkProgress = 0;
+      }
+      if (isBlinking) {
+        blinkProgress += 0.16;
+        if (blinkProgress >= 1.0) {
+          isBlinking = false;
+          blinkProgress = 0;
+          nextBlinkTime = now + 2500 + Math.random() * 3000;
+        }
+      }
+      const blinkFactor = isBlinking ? Math.sin(blinkProgress * Math.PI) : 0;
+
+      // Blush animation (fades in when HAPPY, decays otherwise)
+      if (currentEmotion === 'HAPPY') {
+        blushAlpha = Math.min(1.0, blushAlpha + 0.05);
+      } else {
+        blushAlpha = Math.max(0.0, blushAlpha - 0.02);
+      }
+
+      // Eye Dimensions & Positions (Responsive)
+      const eyeSpacing = Math.min(w * 0.28, 140);
+      const eyeRadius = Math.min(w * 0.18, h * 0.22, 68);
+      const leftEyeX = w * 0.5 - eyeSpacing;
+      const rightEyeX = w * 0.5 + eyeSpacing;
+      const eyeY = h * 0.42;
+
+      // Draw Left and Right Bionic Eyes
+      drawBionicEye(leftEyeX, eyeY, eyeRadius, currentGazeX, currentGazeY, blinkFactor, 'left', now);
+      drawBionicEye(rightEyeX, eyeY, eyeRadius, currentGazeX, currentGazeY, blinkFactor, 'right', now);
+
+      // Draw Blushing Cheeks when Happy
+      if (blushAlpha > 0.01) {
+        drawCheekBlush(leftEyeX - eyeRadius * 0.2, eyeY + eyeRadius * 1.08, eyeRadius * 0.55, blushAlpha);
+        drawCheekBlush(rightEyeX + eyeRadius * 0.2, eyeY + eyeRadius * 1.08, eyeRadius * 0.55, blushAlpha);
+      }
+
+      // Draw Morphing Cyber Mouth with Lip-Sync
+      drawCyberMouth(w * 0.5, h * 0.76, eyeRadius * 1.1, currentEmotion, now);
+
+      requestAnimationFrame(renderFace);
+    }
+    requestAnimationFrame(renderFace);
+
+    function drawBionicEye(cx, cy, r, gazeX, gazeY, blink, side, now) {
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      // Emotion adjustments (e.g. brow tilt when CURIOUS)
+      let browTiltY = 0;
+      if (currentEmotion === 'CURIOUS' && side === 'left') {
+        browTiltY = -r * 0.18; // Left eye perks up
+      }
+
+      // When HAPPY: Eyes become expressive curved crescents
+      if (currentEmotion === 'HAPPY') {
+        ctx.strokeStyle = '#00e5ff';
+        ctx.lineWidth = 9;
+        ctx.lineCap = 'round';
+        ctx.shadowColor = '#00e5ff';
+        ctx.shadowBlur = 18;
+
+        ctx.beginPath();
+        // Crescent curved arc: ⌒
+        ctx.arc(0, r * 0.15, r * 0.72, Math.PI * 1.15, Math.PI * 1.85, false);
+        ctx.stroke();
+
+        // Sparkle stars in corners
+        ctx.fillStyle = '#fff';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(r * 0.45, -r * 0.1, 3, 0, Math.PI * 2);
+        ctx.arc(-r * 0.45, -r * 0.1, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+        return;
+      }
+
+      // 1. Sclera Outer Glowing Ring
+      const outerGrad = ctx.createRadialGradient(0, 0, r * 0.6, 0, 0, r);
+      outerGrad.addColorStop(0, 'rgba(15, 25, 45, 0.95)');
+      outerGrad.addColorStop(0.85, 'rgba(10, 18, 32, 0.98)');
+      outerGrad.addColorStop(1, currentEmotion === 'THINKING' ? '#ff1744' : '#621B6D');
+
+      ctx.beginPath();
+      ctx.arc(0, browTiltY, r, 0, Math.PI * 2);
+      ctx.fillStyle = outerGrad;
+      ctx.shadowColor = currentEmotion === 'THINKING' ? '#ff1744' : '#9c27b0';
+      ctx.shadowBlur = 16;
+      ctx.fill();
+
+      // Cyber tick ring
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Clip for blinking eyelids
+      ctx.save();
+      ctx.beginPath();
+      const openHeight = r * 2 * (1.0 - blink * 0.96);
+      ctx.rect(-r * 1.2, -r + browTiltY + (r * 2 - openHeight) * 0.5, r * 2.4, openHeight);
+      ctx.clip();
+
+      // 2. High-Tech Iris (Gaze offsets)
+      const maxPupilOffset = r * 0.38;
+      const px = gazeX * maxPupilOffset;
+      const py = gazeY * maxPupilOffset + browTiltY;
+      const irisRadius = r * 0.56;
+
+      // Iris Glow
+      const irisGrad = ctx.createRadialGradient(px, py, irisRadius * 0.2, px, py, irisRadius);
+      irisGrad.addColorStop(0, '#ffffff');
+      irisGrad.addColorStop(0.35, '#00e5ff');
+      irisGrad.addColorStop(0.75, '#0055ff');
+      irisGrad.addColorStop(1, 'rgba(0, 20, 60, 0.8)');
+
+      ctx.beginPath();
+      ctx.arc(px, py, irisRadius, 0, Math.PI * 2);
+      ctx.fillStyle = irisGrad;
+      ctx.shadowColor = '#00e5ff';
+      ctx.shadowBlur = 18;
+      ctx.fill();
+
+      // Rotating iris ticks when THINKING
+      if (currentEmotion === 'THINKING') {
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate((now * 0.003) * (side === 'left' ? 1 : -1));
+        ctx.strokeStyle = 'rgba(255, 23, 68, 0.7)';
+        ctx.lineWidth = 2;
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a) * (irisRadius * 0.6), Math.sin(a) * (irisRadius * 0.6));
+          ctx.lineTo(Math.cos(a) * irisRadius, Math.sin(a) * irisRadius);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // 3. Central Deep Pupil
+      const pupilR = irisRadius * (currentEmotion === 'SURPRISED' ? 0.55 : 0.36);
+      ctx.beginPath();
+      ctx.arc(px, py, pupilR, 0, Math.PI * 2);
+      ctx.fillStyle = '#060408';
+      ctx.fill();
+
+      // 4. Bionic Specular Light Highlights
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(px - irisRadius * 0.32, py - irisRadius * 0.32, pupilR * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(px + irisRadius * 0.28, py + irisRadius * 0.25, pupilR * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore(); // remove eyelid clip
+      ctx.restore();
+    }
+
+    function drawCheekBlush(cx, cy, radius, alpha) {
+      ctx.save();
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+      grad.addColorStop(0, `rgba(255, 64, 129, ${alpha * 0.75})`);
+      grad.addColorStop(0.6, `rgba(255, 64, 129, ${alpha * 0.35})`);
+      grad.addColorStop(1, 'rgba(255, 64, 129, 0)');
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawCyberMouth(cx, cy, width, emotion, now) {
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      ctx.strokeStyle = '#00e5ff';
+      ctx.shadowColor = '#00e5ff';
+      ctx.shadowBlur = 12;
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+
+      if (emotion === 'SPEAKING') {
+        // Real-time lip-sync waveform oscillation
+        const waveAmp = 12 + Math.sin(now * 0.02) * 9 * (lipSyncOpen + 0.3);
+        ctx.beginPath();
+        ctx.moveTo(-width * 0.45, 0);
+        ctx.quadraticCurveTo(-width * 0.2, -waveAmp, 0, waveAmp * 0.7);
+        ctx.quadraticCurveTo(width * 0.2, waveAmp, width * 0.45, 0);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(-width * 0.45, 0);
+        ctx.quadraticCurveTo(-width * 0.2, waveAmp * 0.8, 0, -waveAmp * 0.5);
+        ctx.quadraticCurveTo(width * 0.2, -waveAmp * 0.8, width * 0.45, 0);
+        ctx.stroke();
+      } else if (emotion === 'HAPPY') {
+        // Radiant broad joyful smile
+        ctx.strokeStyle = '#00e5ff';
+        ctx.fillStyle = 'rgba(0, 229, 255, 0.18)';
+        ctx.beginPath();
+        ctx.moveTo(-width * 0.5, -4);
+        ctx.quadraticCurveTo(0, width * 0.38, width * 0.5, -4);
+        ctx.quadraticCurveTo(0, width * 0.12, -width * 0.5, -4);
+        ctx.stroke();
+        ctx.fill();
+      } else if (emotion === 'CURIOUS') {
+        // Slight sideways thoughtful smirk
+        ctx.beginPath();
+        ctx.moveTo(-width * 0.35, 4);
+        ctx.quadraticCurveTo(-width * 0.05, 0, width * 0.38, -6);
+        ctx.stroke();
+      } else if (emotion === 'THINKING') {
+        // Attentive oval / thinking pulse
+        const pulse = Math.sin(now * 0.008) * 3;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, width * 0.22, 6 + pulse, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        // Neutral attentive cyber smile
+        ctx.beginPath();
+        ctx.moveTo(-width * 0.38, 0);
+        ctx.quadraticCurveTo(0, width * 0.14, width * 0.38, 0);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    function setEmotion(emotion, durationMs = 0) {
+      currentEmotion = emotion;
+      const badge = document.getElementById('emotionBadge');
+      const icon = document.getElementById('emotionIcon');
+      const text = document.getElementById('emotionText');
+
+      const icons = {
+        'ATTENTIVE': '😊',
+        'HAPPY': '💖',
+        'CURIOUS': '💡',
+        'THINKING': '⚙️',
+        'SPEAKING': '🗣️',
+        'SURPRISED': '😲'
+      };
+      icon.textContent = icons[emotion] || '🤖';
+      text.textContent = `EMOTION: ${emotion}`;
+
+      if (emotionTimer) clearTimeout(emotionTimer);
+      if (durationMs > 0) {
+        emotionTimer = setTimeout(() => {
+          setEmotion('ATTENTIVE');
+        }, durationMs);
+      }
+    }
+
+    /* ==========================================================================
+       3. Front Camera Vision & Pupil Gaze Tracking
+       ========================================================================== */
+    const camVideo = document.getElementById('camVideo');
+    const camOverlay = document.getElementById('camOverlay');
+    const camPip = document.getElementById('camPip');
+    const octx = camOverlay.getContext('2d');
+
+    async function initCamera() {
+      try {
+        camStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
+          audio: false
+        });
+        camVideo.srcObject = camStream;
+        await camVideo.play();
+
+        camOverlay.width = camVideo.videoWidth || 320;
+        camOverlay.height = camVideo.videoHeight || 240;
+
+        document.getElementById('visionDot').className = 'dot green';
+        document.getElementById('visionText').textContent = 'CAM: ON';
+        document.getElementById('camTag').textContent = 'TRACKING';
+
+        // Check if Chrome Native FaceDetector is supported
+        if ('FaceDetector' in window) {
+          try {
+            faceDetector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+          } catch (e) {
+            faceDetector = null;
+          }
+        }
+
+        // Start 15 FPS Vision Loop
+        setInterval(processVisionFrame, 66);
+      } catch (err) {
+        console.warn('Front camera init notice:', err);
+        document.getElementById('visionDot').className = 'dot gold';
+        document.getElementById('visionText').textContent = 'CAM: SIM';
+        document.getElementById('camTag').textContent = 'SIM GAZE';
+        startSimulatedGazeDrift();
+      }
+    }
+
+    async function processVisionFrame() {
+      if (!camVideo || camVideo.readyState < 2) return;
+
+      const vw = camOverlay.width;
+      const vh = camOverlay.height;
+      octx.clearRect(0, 0, vw, vh);
+
+      let faceBox = null;
+
+      // Tier 1: Native Chrome FaceDetector API
+      if (faceDetector) {
+        try {
+          const faces = await faceDetector.detect(camVideo);
+          if (faces && faces.length > 0) {
+            faceBox = faces[0].boundingBox;
+          }
+        } catch (e) {}
+      }
+
+      // Tier 2: Built-in Fast Optical Skin-Luminance Motion Centroid Tracker (Zero-Dependency)
+      if (!faceBox) {
+        faceBox = detectFaceByLuminance(camVideo, vw, vh);
+      }
+
+      if (faceBox) {
+        visitorDetectionCount++;
+        // Centroid coordinates
+        const cx = faceBox.x + faceBox.width * 0.5;
+        const cy = faceBox.y + faceBox.height * 0.5;
+
+        // Front camera is mirrored horizontally
+        const normX = 1.0 - (cx / vw); // 0 (left) to 1 (right)
+        const normY = cy / vh;          // 0 (top/tall) to 1 (bottom/child)
+
+        // Map Gaze:
+        // When normY < 0.45: Tall visitor standing up -> pupils shift UP (targetGazeY < 0)
+        // When normY > 0.55: Short visitor / child -> pupils shift DOWN (targetGazeY > 0)
+        targetGazeX = (normX - 0.5) * 2.2;
+        targetGazeY = (normY - 0.5) * 2.2;
+        targetGazeX = Math.max(-1.0, Math.min(1.0, targetGazeX));
+        targetGazeY = Math.max(-1.0, Math.min(1.0, targetGazeY));
+
+        const gazeDescr = targetGazeY < -0.2 ? 'TALL VISITOR (UP)' : (targetGazeY > 0.2 ? 'CHILD/LOW (DOWN)' : 'EYE LEVEL');
+        document.getElementById('gazeText').textContent = `GAZE: ${gazeDescr}`;
+
+        // Draw bounding box & tracking crosshair on PiP overlay
+        octx.strokeStyle = '#00e5ff';
+        octx.lineWidth = 2;
+        octx.strokeRect(faceBox.x, faceBox.y, faceBox.width, faceBox.height);
+        octx.fillStyle = '#ff1744';
+        octx.beginPath();
+        octx.arc(cx, cy, 4, 0, Math.PI * 2);
+        octx.fill();
+
+        // Visitor Proximity Trigger
+        const faceAreaRatio = (faceBox.width * faceBox.height) / (vw * vh);
+        if (faceAreaRatio > 0.12 && currentRobotState === 'IDLE') {
+          const now = Date.now();
+          if (now - lastVisitorGreetingTime > 25000) {
+            lastVisitorGreetingTime = now;
+            setEmotion('HAPPY', 6000);
+            speakWelcome(
+              "Hello! Welcome to IEEE RAS at E-JUST. Please tap your university or event NFC badge on the chest reader to begin escort.",
+              "أهلاً وسهلاً بكم في فرع IEEE RAS بالجامعة المصرية اليابانية. يرجى تمرير بطاقة NFC للبدء."
+            );
+          }
+        }
+      } else {
+        visitorDetectionCount = Math.max(0, visitorDetectionCount - 1);
+        if (visitorDetectionCount === 0) {
+          // No visitor detected: gentle random eye drift
+          targetGazeX = Math.sin(Date.now() * 0.0008) * 0.35;
+          targetGazeY = Math.cos(Date.now() * 0.0006) * 0.2;
+          document.getElementById('gazeText').textContent = 'GAZE: SCANNING';
+        }
+      }
+    }
+
+    // Fast Canvas Pixel Sampler for Offline Face Centroid Tracking
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = 64;
+    offCanvas.height = 48;
+    const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+
+    function detectFaceByLuminance(video, origW, origH) {
+      offCtx.drawImage(video, 0, 0, 64, 48);
+      const imgData = offCtx.getImageData(0, 0, 64, 48).data;
+      let totalX = 0;
+      let totalY = 0;
+      let count = 0;
+
+      for (let y = 6; y < 42; y++) {
+        for (let x = 6; x < 58; x++) {
+          const idx = (y * 64 + x) * 4;
+          const r = imgData[idx];
+          const g = imgData[idx + 1];
+          const b = imgData[idx + 2];
+
+          // Normalized skin-tone luminance heuristic
+          if (r > 60 && g > 35 && b > 20 && r > g && (r - g) > 10 && (r - b) > 10) {
+            totalX += x;
+            totalY += y;
+            count++;
+          }
+        }
+      }
+
+      if (count > 45) {
+        const avgX = (totalX / count) * (origW / 64);
+        const avgY = (totalY / count) * (origH / 48);
+        const boxSize = Math.sqrt(count) * (origW / 64) * 2.2;
+        return {
+          x: Math.max(0, avgX - boxSize * 0.5),
+          y: Math.max(0, avgY - boxSize * 0.5),
+          width: Math.min(origW, boxSize),
+          height: Math.min(origH, boxSize * 1.2)
+        };
+      }
+      return null;
+    }
+
+    function startSimulatedGazeDrift() {
+      setInterval(() => {
+        if (!camStream) {
+          targetGazeX = (Math.random() - 0.5) * 1.2;
+          targetGazeY = (Math.random() - 0.5) * 0.8;
+        }
+      }, 3500);
+    }
+
+    function toggleCamPip() {
+      camPip.classList.toggle('hidden');
+    }
+
+    /* ==========================================================================
+       4. Web Bluetooth (Nordic UART Service) Communication
+       ========================================================================== */
+    function logBle(msg) {
+      console.log('[BLE]', msg);
+      const box = document.getElementById('bleLogBox');
+      const time = new Date().toLocaleTimeString();
+      box.innerHTML += `<div>[${time}] ${msg}</div>`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    async function connectBle() {
+      if (!navigator.bluetooth) {
+        alert('Web Bluetooth is not supported on this browser. Please use Chrome on Android!');
+        logBle('Web Bluetooth API not available on this platform.');
+        return;
+      }
+
+      try {
+        logBle('Requesting Bluetooth Device with Nordic UART Service...');
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [
+            { services: [NORDIC_UART_SERVICE] },
+            { namePrefix: 'AURA' },
+            { namePrefix: 'IEEE' },
+            { namePrefix: 'ESP32' }
+          ],
+          optionalServices: [NORDIC_UART_SERVICE]
+        });
+
+        bleDevice.addEventListener('gattserverdisconnected', onBleDisconnected);
+        logBle(`Device selected: ${bleDevice.name}. Connecting GATT...`);
+
+        bleServer = await bleDevice.gatt.connect();
+        logBle('GATT Connected. Getting Primary Nordic UART Service...');
+
+        const service = await bleServer.getPrimaryService(NORDIC_UART_SERVICE);
+        rxChar = await service.getCharacteristic(NORDIC_RX_CHAR);
+        txChar = await service.getCharacteristic(NORDIC_TX_CHAR);
+
+        await txChar.startNotifications();
+        txChar.addEventListener('characteristicvaluechanged', handleBleNotification);
+
+        bleConnected = true;
+        document.getElementById('bleDot').className = 'dot green';
+        document.getElementById('bleText').textContent = 'BLE: ONLINE';
+        document.getElementById('blePill').classList.add('connected');
+        document.getElementById('bleActionBtn').classList.add('connected');
+        document.getElementById('bleActionText').textContent = 'ESP32 PAIRED';
+        logBle('BLE Pairing Complete! Receiving telemetry from ESP32.');
+
+        // Send handshake
+        sendBleCommand({ cmd: 'HELLO', client: 'AURA_SCREEN_APP' });
+      } catch (err) {
+        console.error('BLE connection error:', err);
+        logBle('BLE Error: ' + err.message);
+      }
+    }
+
+    function onBleDisconnected() {
+      bleConnected = false;
+      document.getElementById('bleDot').className = 'dot red';
+      document.getElementById('bleText').textContent = 'BLE: DISCONNECTED';
+      document.getElementById('blePill').classList.remove('connected');
+      document.getElementById('bleActionBtn').classList.remove('connected');
+      document.getElementById('bleActionText').textContent = 'REPAIR ESP32';
+      logBle('ESP32 Disconnected.');
+    }
+
+    let bleRxBuffer = '';
+    function handleBleNotification(event) {
+      const value = event.target.value;
+      const decoder = new TextDecoder();
+      const chunk = decoder.decode(value);
+      bleRxBuffer += chunk;
+
+      if (bleRxBuffer.includes('\n')) {
+        const lines = bleRxBuffer.split('\n');
+        bleRxBuffer = lines.pop(); // keep partial
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.length > 0) {
+            processEsp32Packet(trimmed);
+          }
+        }
+      }
+    }
+
+    function processEsp32Packet(raw) {
+      logBle('RX <- ' + raw);
+      try {
+        const data = JSON.parse(raw);
+
+        // 1. NFC Card Tap Event
+        if (data.event === 'NFC_TAP') {
+          triggerVIP(
+            data.name || 'Honored E-JUST VIP',
+            ARABIC_TITLES[data.name] || 'أهلاً بكم في فعالية IEEE RAS بالجامعة المصرية اليابانية',
+            data.dest || 'Main Conference Hall',
+            data.markers || 1,
+            data.uid || 'NFC-HW',
+            false // don't loop command back
+          );
+        }
+        // 2. State & Telemetry Updates
+        else if (data.event === 'STATUS') {
+          currentRobotState = data.state;
+          if (data.state === 'ESCORTING') {
+            document.getElementById('statePill').textContent = 'ESCORTING VIP ALONG GUIDE PATH';
+            document.getElementById('routeFill').style.width = '65%';
+          }
+        }
+        // 3. Arrived at Destination Event
+        else if (data.event === 'ARRIVED') {
+          currentRobotState = 'ARRIVED';
+          document.getElementById('statePill').textContent = 'ARRIVED AT DESTINATION';
+          document.getElementById('nfcHalo').textContent = '🏛️';
+          document.getElementById('routeFill').style.width = '100%';
+          setEmotion('HAPPY', 8000);
+          speakWelcome(`We have safely arrived at ${data.dest || 'the hall'}. Enjoy the IEEE RAS E-JUST program!`, 'وصلنا بحمد الله. نتمنى لكم وقتاً ممتعاً ومثمراً.');
+        }
+        // 4. Obstacle Alert
+        else if (data.event === 'OBSTACLE') {
+          document.getElementById('subSpeaker').textContent = 'SAFETY SENSOR';
+          document.getElementById('subText').textContent = `Obstacle detected at ${data.dist} cm. Waiting for path to clear...`;
+          setEmotion('SURPRISED', 2000);
+        }
+      } catch (e) {
+        logBle('Malformed packet: ' + raw);
+      }
+    }
+
+    async function sendBleCommand(obj) {
+      const payload = JSON.stringify(obj) + '\n';
+      logBle('TX -> ' + payload.trim());
+      if (rxChar && bleConnected) {
+        try {
+          const encoder = new TextEncoder();
+          const data = encoder.encode(payload);
+          // Chunk into 20-byte slices for universal BLE ATT MTU compatibility
+          for (let i = 0; i < data.length; i += 20) {
+            const chunk = data.slice(i, i + 20);
+            if (rxChar.writeValueWithoutResponse) {
+              await rxChar.writeValueWithoutResponse(chunk);
+            } else {
+              await rxChar.writeValue(chunk);
+            }
+            if (i + 20 < data.length) {
+              await new Promise(r => setTimeout(r, 15));
+            }
+          }
+        } catch (e) {
+          logBle('BLE TX Error: ' + e.message);
+        }
+      } else {
+        // Fallback: Send over Wi-Fi AP if connected
+        fetch(`http://${esp32Ip}/trigger?cmd=${encodeURIComponent(obj.cmd || '')}&name=${encodeURIComponent(obj.name || '')}`, { mode: 'no-cors' }).catch(() => {});
+      }
+    }
+
+    /* ==========================================================================
+       5. NFC Card & VIP Welcoming Sequence
+       ========================================================================== */
+    function triggerVIP(name, arabicGreeting, destination, markerCount, uidValue = 'SIM_UID', notifyHardware = true) {
+      if (escortTimer) clearInterval(escortTimer);
+      activeUid = uidValue;
+      currentRobotState = 'VIP_WELCOME';
+
+      // Auto-engage hands-free natural conversation during VIP escort
+      isContinuousConversation = true;
+      updateContinuousUI();
+
+      const resolvedAr = arabicGreeting || ARABIC_TITLES[name] || 'أهلاً وسهلاً بكم في جامعة E-JUST';
+
+      // Visual Updates
+      document.getElementById('nfcHalo').classList.add('active');
+      document.getElementById('nfcHalo').textContent = '✨';
+      document.getElementById('nfcSub').textContent = 'VIP AUTHENTICATED';
+      document.getElementById('statePill').textContent = `NFC BADGE VERIFIED • ESCORTING (${markerCount} STOP${markerCount > 1 ? 'S' : ''})`;
+      document.getElementById('guestName').textContent = 'Welcome, ' + name + '!';
+      document.getElementById('guestArabic').textContent = resolvedAr;
+      document.getElementById('destText').textContent = '➔ Following Guide Path to: ' + destination;
+
+      // Emotion Burst to HAPPY + Blushing Cheeks
+      setEmotion('HAPPY', 8000);
+
+      // Bilingual Spoken Greeting
+      const enWelcome = `Welcome to IEEE RAS at E-JUST, ${name}. I am honored to escort you to the ${destination}. The program will now begin. Please follow me.`;
+      speakWelcome(enWelcome, resolvedAr);
+
+      // Notify ESP32 via BLE to trigger arm wave gesture & start line motors
+      if (notifyHardware) {
+        sendBleCommand({
+          cmd: 'START_ESCORT',
+          name: name,
+          dest: destination,
+          markers: markerCount,
+          uid: uidValue
+        });
+      }
+
+      // Progress animation
+      let progress = 20;
+      const fill = document.getElementById('routeFill');
+      fill.style.width = progress + '%';
+
+      escortTimer = setInterval(() => {
+        if (bleConnected) return; // When BLE hardware is live, progress is fed by ESP32 notifications
+        progress += 16;
+        if (progress <= 100) {
+          fill.style.width = progress + '%';
+        }
+        if (progress === 84) {
+          document.getElementById('statePill').textContent = 'ARRIVED AT DESTINATION';
+          document.getElementById('nfcHalo').textContent = '🏛️';
+          document.getElementById('destText').textContent = '✓ Arrived at ' + destination + ' — Enjoy the IEEE RAS Event!';
+          speakWelcome(`We have arrived at the ${destination}. Enjoy the IEEE RAS E-JUST event!`, 'وصلنا إلى وجهتكم. نتمنى لكم وقتاً رائعاً.');
+        }
+        if (progress >= 135) {
+          clearInterval(escortTimer);
+          resetStandby(false);
+        }
+      }, 2400);
+    }
+
+    function simulateNewGuest() {
+      const customName = prompt('Enter VIP Guest Name:', 'Dr. Alex Robinson');
+      if (customName) {
+        triggerVIP(customName, `أهلاً وسهلاً د. ${customName} — مرحباً بكم في رحاب E-JUST`, 'Main Conference Hall', 1, 'CUSTOM_TAP');
+      }
+    }
+
+    function resetStandby(notifyHardware = false) {
+      if (escortTimer) clearInterval(escortTimer);
+      activeUid = '';
+      currentRobotState = 'IDLE';
+
+      if (notifyHardware) {
+        sendBleCommand({ cmd: 'RESET' });
+      }
+
+      document.getElementById('nfcHalo').classList.remove('active');
+      document.getElementById('nfcHalo').textContent = '💳';
+      document.getElementById('nfcSub').textContent = 'TAP VIP CARD';
+      document.getElementById('statePill').textContent = 'STANDBY AT RECEPTION DESK';
+      document.getElementById('guestName').textContent = 'Welcome to IEEE RAS E-JUST';
+      document.getElementById('guestArabic').textContent = 'أهلاً بكم في فرع IEEE RAS بالجامعة المصرية اليابانية (E-JUST)';
+      document.getElementById('destText').textContent = 'Please Tap Your University / Event NFC Card Below ↓';
+      document.getElementById('routeFill').style.width = '15%';
+
+      setEmotion('ATTENTIVE');
+      updateSubtitles('AURA-EJUST v3.0', 'Welcome to IEEE RAS E-JUST. Please tap your NFC badge on the chest reader to begin.');
+    }
+
+    /* ==========================================================================
+       6. Gemini Live & Speech Conversational Intelligence
+       ========================================================================== */
+    let recognition = null;
+    let isListening = false;
+
+    // Gemini Live WebSocket Session
+    function initLiveWebSocket() {
+      if (selectedModel !== 'gemini-3.8-live') {
+        if (liveWs) {
+          try { liveWs.close(); } catch(e) {}
+          liveWs = null;
+          isLiveWsConnected = false;
+        }
+        return;
+      }
+
+      if (liveWs && (liveWs.readyState === WebSocket.OPEN || liveWs.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+
+      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+      logBle('Connecting Gemini Live WebSocket at: ' + wsUrl.replace(apiKey, 'API_KEY_HIDDEN'));
+
+      try {
+        liveWs = new WebSocket(wsUrl);
+
+        liveWs.onopen = () => {
+          isLiveWsConnected = true;
+          document.getElementById('geminiDot').className = 'dot green';
+          document.getElementById('geminiText').textContent = 'GEMINI: LIVE WS';
+          logBle('Gemini Live WebSocket Connected! Sending setup configuration...');
+
+          const setupMsg = {
+            setup: {
+              model: 'models/gemini-3.8-live',
+              generationConfig: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: {
+                      voiceName: selectedVoice === 'native-tts' ? 'Aoede' : selectedVoice
+                    }
+                  }
+                }
+              },
+              systemInstruction: {
+                parts: [{
+                  text: 'You are AURA-EJUST v3.0, the flagship autonomous VIP reception humanoid robot developed by IEEE RAS at Egypt-Japan University of Science and Technology (E-JUST). Provide concise, warm, dignified spoken answers (1-2 sentences). When thanked, include [EMOTION: HAPPY]. When asked technical questions, include [EMOTION: CURIOUS].'
+                }]
+              }
+            }
+          };
+          liveWs.send(JSON.stringify(setupMsg));
+        };
+
+        liveWs.onmessage = async (evt) => {
+          try {
+            let data;
+            if (evt.data instanceof Blob) {
+              const text = await evt.data.text();
+              data = JSON.parse(text);
+            } else {
+              data = JSON.parse(evt.data);
+            }
+
+            const sc = data.serverContent;
+            if (!sc) return;
+
+            // Display server transcription
+            if (sc.outputTranscription && sc.outputTranscription.text) {
+              updateSubtitles('AURA-EJUST (LIVE)', sc.outputTranscription.text);
+            }
+
+            // Play streaming PCM audio chunks
+            if (sc.modelTurn && sc.modelTurn.parts) {
+              for (const part of sc.modelTurn.parts) {
+                if (part.inlineData && part.inlineData.data) {
+                  playLivePcmChunk(part.inlineData.data);
+                }
+              }
+            }
+
+            if (sc.turnComplete) {
+              logBle('Gemini Live server turn completed.');
+            }
+          } catch (err) {
+            console.warn('Error parsing Live WS message:', err);
+          }
+        };
+
+        liveWs.onerror = (e) => {
+          console.warn('Gemini Live WebSocket notice:', e);
+          document.getElementById('geminiDot').className = 'dot gold';
+          document.getElementById('geminiText').textContent = 'GEMINI: REST/AUTO';
+        };
+
+        liveWs.onclose = () => {
+          isLiveWsConnected = false;
+          document.getElementById('geminiDot').className = 'dot gold';
+          document.getElementById('geminiText').textContent = 'GEMINI: REST/AUTO';
+          logBle('Gemini Live WebSocket closed.');
+        };
+      } catch (err) {
+        console.warn('WebSocket init exception:', err);
+        document.getElementById('geminiDot').className = 'dot gold';
+        document.getElementById('geminiText').textContent = 'GEMINI: REST/AUTO';
+      }
+    }
+
+    function playLivePcmChunk(base64Data) {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+
+        const binaryString = atob(base64Data);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const int16 = new Int16Array(bytes.buffer);
+        const float32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) {
+          float32[i] = int16[i] / 32768.0;
+        }
+
+        const audioBuffer = audioCtx.createBuffer(1, float32.length, 24000);
+        audioBuffer.copyToChannel(float32, 0);
+
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+        if (nextAudioStartTime < now) {
+          nextAudioStartTime = now;
+        }
+        source.start(nextAudioStartTime);
+        nextAudioStartTime += audioBuffer.duration;
+
+        setEmotion('SPEAKING');
+        lipSyncOpen = 1.0;
+        isLiveAudioPlaying = true;
+
+        source.onended = () => {
+          if (audioCtx.currentTime >= nextAudioStartTime - 0.05) {
+            lipSyncOpen = 0.0;
+            isLiveAudioPlaying = false;
+            setEmotion('ATTENTIVE', 3000);
+            if (isContinuousConversation) {
+              setTimeout(startListening, 600);
+            }
+          }
+        };
+      } catch (e) {
+        console.warn('PCM decode/playback error:', e);
+      }
+    }
+
+    function sendLiveRealtimeText(text) {
+      if (liveWs && liveWs.readyState === WebSocket.OPEN) {
+        const clientMsg = {
+          realtimeInput: {
+            text: text
+          }
+        };
+        liveWs.send(JSON.stringify(clientMsg));
+        logBle('Sent to Gemini Live WS: ' + text);
+        return true;
+      }
+      return false;
+    }
+
+    // Hands-Free Natural Continuous Conversation Manager
+    function toggleContinuousMode() {
+      isContinuousConversation = !isContinuousConversation;
+      updateContinuousUI();
+      if (isContinuousConversation) {
+        startListening();
+      } else {
+        stopListening();
+      }
+    }
+
+    function updateContinuousUI() {
+      const btn = document.getElementById('continuousBtn');
+      const txt = document.getElementById('continuousText');
+      if (btn && txt) {
+        if (isContinuousConversation) {
+          btn.classList.add('active');
+          txt.textContent = 'AUTO-TALK: ON';
+        } else {
+          btn.classList.remove('active');
+          txt.textContent = 'AUTO-TALK: OFF';
+        }
+      }
+    }
+
+    function startListening() {
+      if (isListening || (window.speechSynthesis && window.speechSynthesis.speaking) || isLiveAudioPlaying) return;
+      if (!recognition) initSpeechRecognition();
+      try {
+        recognition.start();
+      } catch (e) {
+        // Recognition already started or transitioning
+      }
+    }
+
+    function stopListening() {
+      isListening = false;
+      const micBtn = document.getElementById('micBtn');
+      if (micBtn) micBtn.classList.remove('listening');
+      const micTxt = document.getElementById('micText');
+      if (micTxt) micTxt.textContent = 'TAP TO SPEAK';
+      const dot = document.getElementById('geminiDot');
+      if (dot) dot.className = isLiveWsConnected ? 'dot green' : 'dot green';
+    }
+
+    function toggleMic() {
+      if (!recognition) initSpeechRecognition();
+      if (isListening) {
+        isContinuousConversation = false;
+        updateContinuousUI();
+        try { recognition.stop(); } catch(e) {}
+        stopListening();
+      } else {
+        isContinuousConversation = true;
+        updateContinuousUI();
+        startListening();
+      }
+    }
+
+    function initSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        console.warn('Web Speech Recognition API not available.');
+        return;
+      }
+
+      if (recognition) {
+        try { recognition.abort(); } catch(e) {}
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        isListening = true;
+        document.getElementById('micBtn').classList.add('listening');
+        document.getElementById('micText').textContent = 'LISTENING...';
+        document.getElementById('geminiDot').className = 'dot cyan';
+        updateSubtitles('YOU (LISTENING)', '...');
+        setEmotion('ATTENTIVE');
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map(r => r[0].transcript)
+          .join('');
+        updateSubtitles('YOU', transcript);
+        if (event.results[0].isFinal) {
+          handleUserUtterance(transcript);
+        }
+      };
+
+      recognition.onerror = (e) => {
+        console.warn('Speech recognition notice:', e.error);
+        isListening = false;
+        if (e.error === 'no-speech' && isContinuousConversation && !window.speechSynthesis.speaking && !isLiveAudioPlaying) {
+          // Gracefully continue listening without user intervention
+          setTimeout(() => {
+            if (isContinuousConversation && !isListening && !window.speechSynthesis.speaking && !isLiveAudioPlaying) {
+              startListening();
+            }
+          }, 400);
+          return;
+        }
+        stopListening();
+      };
+
+      recognition.onend = () => {
+        isListening = false;
+        if (isContinuousConversation && !window.speechSynthesis.speaking && !isLiveAudioPlaying) {
+          setTimeout(() => {
+            if (isContinuousConversation && !isListening && !window.speechSynthesis.speaking && !isLiveAudioPlaying) {
+              startListening();
+            }
+          }, 500);
+        } else {
+          stopListening();
+        }
+      };
+    }
+
+    function updateSubtitles(speaker, text) {
+      const sp = document.getElementById('subSpeaker');
+      const tx = document.getElementById('subText');
+      if (sp) sp.textContent = speaker;
+      if (tx) tx.textContent = text;
+    }
+
+    // Contextual Sentiment & Emotion Extractor
+    function extractContextEmotion(text) {
+      const lower = text.toLowerCase();
+      // Gratitude context -> HAPPY
+      if (lower.includes('thank') || lower.includes('thanks') || lower.includes('appreciate') || lower.includes('good job') || lower.includes('awesome') || lower.includes('شكرا') || lower.includes('تسلم')) {
+        return 'HAPPY';
+      }
+      // Question / Inquiring context -> CURIOUS
+      if (lower.includes('what') || lower.includes('how') || lower.includes('why') || lower.includes('where') || lower.includes('who') || lower.includes('can you') || lower.includes('tell me') || lower.includes('أين') || lower.includes('كيف') || lower.includes('ما هو')) {
+        return 'CURIOUS';
+      }
+      // Surprise context
+      if (lower.includes('wow') || lower.includes('really') || lower.includes('incredible') || lower.includes('amazing')) {
+        return 'SURPRISED';
+      }
+      return 'ATTENTIVE';
+    }
+
+    async function handleUserUtterance(userText) {
+      const detectedEmotion = extractContextEmotion(userText);
+      setEmotion(detectedEmotion === 'HAPPY' ? 'HAPPY' : 'THINKING');
+      updateSubtitles('AURA (THINKING)', 'Reasoning with conversational brain...');
+
+      let replyText = '';
+
+      if (apiProvider === 'antigravity-relay') {
+        try {
+          replyText = await callAntigravityRelayAPI(userText);
+        } catch (err) {
+          console.warn('Antigravity Relay call failed, falling back to autonomous dialog engine:', err);
+          replyText = generateAutonomousReply(userText);
+        }
+      } else if (apiProvider === 'openrouter' && openRouterKey && openRouterKey.length > 5) {
+        try {
+          replyText = await callOpenRouterAPI(userText);
+        } catch (err) {
+          console.warn('OpenRouter API call failed, falling back to autonomous dialog engine:', err);
+          replyText = generateAutonomousReply(userText);
+        }
+      } else if (apiProvider === 'gemini') {
+        // 1. If Gemini Live WebSocket is active, stream realtime text
+        if (selectedModel === 'gemini-3.8-live' && isLiveWsConnected && liveWs && liveWs.readyState === WebSocket.OPEN) {
+          const liveSent = sendLiveRealtimeText(userText);
+          if (liveSent) return;
+        }
+
+        // 2. Otherwise, query Gemini REST API or Autonomous Smart Dialog Engine
+        if (selectedModel !== 'offline-autonomous' && selectedModel !== 'gemini-3.8-live' && apiKey && apiKey.length > 10) {
+          try {
+            replyText = await callGeminiAPI(userText);
+          } catch (err) {
+            console.warn('Gemini API call failed, falling back to autonomous dialog engine:', err);
+            replyText = generateAutonomousReply(userText);
+          }
+        } else {
+          replyText = generateAutonomousReply(userText);
+        }
+      } else {
+        replyText = generateAutonomousReply(userText);
+      }
+
+      // Check reply emotion tags e.g. [EMOTION: HAPPY]
+      let finalEmotion = detectedEmotion;
+      if (replyText.includes('[EMOTION: HAPPY]')) finalEmotion = 'HAPPY';
+      if (replyText.includes('[EMOTION: CURIOUS]')) finalEmotion = 'CURIOUS';
+
+      const cleanedReply = replyText.replace(/\[EMOTION:.*?\]/g, '').trim();
+
+      setEmotion('SPEAKING');
+      updateSubtitles('AURA-EJUST v3.0', cleanedReply);
+
+      // Play Lip-Sync & Spoken Audio
+      speakReply(cleanedReply, finalEmotion);
+    }
+
+    async function callAntigravityRelayAPI(promptText) {
+      const systemInstruction = `You are AURA-EJUST v3.0, the autonomous VIP receptionist and humanoid robot developed by IEEE RAS at Egypt-Japan University of Science and Technology (E-JUST). Keep responses very concise (1-2 sentences), dignified, and warm for spoken output. If the guest thanks you, include the tag [EMOTION: HAPPY]. If they ask a technical question, include [EMOTION: CURIOUS].`;
+      
+      let cleanBase = '';
+      if (window.location && window.location.origin && window.location.origin.startsWith('http')) {
+        cleanBase = window.location.origin;
+      } else {
+        cleanBase = bridgeUrl || 'http://192.168.1.19:8080';
+      }
+      cleanBase = cleanBase.replace(/\/+$/, '');
+
+      const response = await fetch(`${cleanBase}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Bypass-Tunnel-Reminder': 'true'
+        },
+        body: JSON.stringify({
+          prompt: promptText,
+          system_instruction: systemInstruction
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Relay HTTP ${response.status}`);
+      }
+
+      const json = await response.json();
+      return `[EMOTION: ${json.emotion || 'ATTENTIVE'}] ${json.reply}`;
+    }
+
+    async function callOpenRouterAPI(promptText) {
+      const systemInstruction = `You are AURA-EJUST v3.0, the autonomous VIP receptionist and humanoid robot developed by IEEE RAS at Egypt-Japan University of Science and Technology (E-JUST). Keep responses very concise (1-2 sentences), dignified, and warm for spoken output. If the guest thanks you, include the tag [EMOTION: HAPPY]. If they ask a technical question, include [EMOTION: CURIOUS].`;
+
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${openRouterKey}`,
+          'HTTP-Referer': 'https://aura-ejust.local',
+          'X-Title': 'AURA-EJUST v3.0 Humanoid'
+        },
+        body: JSON.stringify({
+          model: openRouterModel,
+          messages: [
+            { role: 'system', content: systemInstruction },
+            { role: 'user', content: promptText }
+          ],
+          temperature: 0.7,
+          max_tokens: 150
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenRouter HTTP ${response.status}`);
+      }
+
+      const json = await response.json();
+      if (json.choices && json.choices.length > 0 && json.choices[0].message) {
+        return json.choices[0].message.content;
+      }
+      throw new Error('Empty OpenRouter response');
+    }
+
+    async function callGeminiAPI(promptText) {
+      const systemInstruction = `You are AURA-EJUST v3.0, the autonomous VIP receptionist and humanoid robot developed by IEEE RAS at Egypt-Japan University of Science and Technology (E-JUST). Keep responses very concise (1-2 sentences), dignified, and warm for spoken output. If the guest thanks you, include the tag [EMOTION: HAPPY]. If they ask a technical question, include [EMOTION: CURIOUS].`;
+
+      const targetModel = selectedModel === 'gemini-3.8-live' ? 'gemini-3.8-flash' : selectedModel;
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            { role: 'user', parts: [{ text: `${systemInstruction}\n\nGuest says: "${promptText}"` }] }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const json = await response.json();
+      return json.candidates[0].content.parts[0].text;
+    }
+
+    // High-Fidelity Offline Autonomous Smart Dialog Engine (Guarantees zero-downtime)
+    function generateAutonomousReply(userText) {
+      const lower = userText.toLowerCase();
+
+      if (lower.includes('thank') || lower.includes('شكرا')) {
+        return '[EMOTION: HAPPY] You are most welcome! It is my absolute honor to assist you here at IEEE RAS E-JUST.';
+      }
+      if (lower.includes('who are you') || lower.includes('your name') || lower.includes('من أنت')) {
+        return '[EMOTION: ATTENTIVE] I am AURA-EJUST v3.0, the flagship autonomous VIP reception humanoid created by the IEEE Robotics and Automation Society branch at E-JUST.';
+      }
+      if (lower.includes('hall') || lower.includes('conference') || lower.includes('theatre') || lower.includes('قاعة')) {
+        return '[EMOTION: CURIOUS] The Main Conference Hall is located along the primary floor guide path, and the Grand Theatre is at station marker two. Please follow my lead!';
+      }
+      if (lower.includes('hello') || lower.includes('hi') || lower.includes('مرحبا') || lower.includes('أهلا')) {
+        return '[EMOTION: HAPPY] Hello and welcome to E-JUST! I am ready to guide you to your session. Please feel free to tap your NFC badge.';
+      }
+      if (lower.includes('robot') || lower.includes('spec') || lower.includes('motor')) {
+        return '[EMOTION: CURIOUS] I am powered by an ESP32 DevKit V1 with high-torque geared motors, 5-channel line tracking, front gaze vision, and Nordic UART BLE connectivity.';
+      }
+      return '[EMOTION: ATTENTIVE] Thank you for your inquiry. I am here to assist your visit and escort you to the IEEE RAS event halls at E-JUST.';
+    }
+
+    function speakReply(text, emotionAfter) {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = /[\u0600-\u06FF]/.test(text) ? 'ar-EG' : 'en-US';
+      utterance.rate = 1.0;
+      utterance.pitch = 1.05;
+
+      // Animate mouth during speech
+      utterance.onstart = () => {
+        setEmotion('SPEAKING');
+        lipSyncOpen = 1.0;
+      };
+      utterance.onerror = (err) => {
+        console.warn('Speech synthesis error:', err);
+        lipSyncOpen = 0.0;
+        setEmotion('ATTENTIVE');
+        if (isContinuousConversation) {
+          setTimeout(startListening, 600);
+        }
+      };
+      utterance.onend = () => {
+        lipSyncOpen = 0.0;
+        setEmotion(emotionAfter || 'ATTENTIVE', 4000);
+        if (isContinuousConversation) {
+          setTimeout(startListening, 600);
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function speakWelcome(enText, arText) {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+
+      updateSubtitles('AURA-EJUST v3.0', (enText ? enText : '') + (arText ? ' — ' + arText : ''));
+      setEmotion('SPEAKING');
+      lipSyncOpen = 1.0;
+
+      if (enText) {
+        const uEn = new SpeechSynthesisUtterance(enText);
+        uEn.lang = 'en-US';
+        uEn.rate = 0.98;
+        uEn.onerror = () => {
+          lipSyncOpen = 0.0;
+          setEmotion('HAPPY', 5000);
+          if (isContinuousConversation) setTimeout(startListening, 800);
+        };
+        uEn.onend = () => {
+          if (arText) {
+            const uAr = new SpeechSynthesisUtterance(arText);
+            uAr.lang = 'ar-EG';
+            uAr.rate = 0.95;
+            uAr.onerror = () => {
+              lipSyncOpen = 0.0;
+              setEmotion('HAPPY', 5000);
+              if (isContinuousConversation) setTimeout(startListening, 800);
+            };
+            uAr.onend = () => {
+              lipSyncOpen = 0.0;
+              setEmotion('HAPPY', 5000);
+              if (isContinuousConversation) setTimeout(startListening, 800);
+            };
+            window.speechSynthesis.speak(uAr);
+          } else {
+            lipSyncOpen = 0.0;
+            setEmotion('HAPPY', 5000);
+            if (isContinuousConversation) setTimeout(startListening, 800);
+          }
+        };
+        window.speechSynthesis.speak(uEn);
+      } else if (arText) {
+        const uAr = new SpeechSynthesisUtterance(arText);
+        uAr.lang = 'ar-EG';
+        uAr.rate = 0.95;
+        uAr.onerror = () => {
+          lipSyncOpen = 0.0;
+          setEmotion('HAPPY', 5000);
+          if (isContinuousConversation) setTimeout(startListening, 800);
+        };
+        uAr.onend = () => {
+          lipSyncOpen = 0.0;
+          setEmotion('HAPPY', 5000);
+          if (isContinuousConversation) setTimeout(startListening, 800);
+        };
+        window.speechSynthesis.speak(uAr);
+      }
+    }
+
+    function sendTypedText() {
+      const input = document.getElementById('userTextInput');
+      if (!input) return;
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      unlockAudioAndListen();
+      updateSubtitles('YOU', text);
+      handleUserUtterance(text);
+    }
+
+    function unlockAudioAndListen() {
+      if ('speechSynthesis' in window) {
+        try { window.speechSynthesis.resume(); } catch(e) {}
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        try { audioCtx.resume(); } catch(e) {}
+      }
+      const wakePrompt = document.getElementById('wakePrompt');
+      if (wakePrompt) wakePrompt.style.display = 'none';
+
+      if (!isListening && isContinuousConversation) {
+        startListening();
+      }
+    }
+
+    function testEmotion(emotion, sampleSpeech) {
+      unlockAudioAndListen();
+      handleUserUtterance(sampleSpeech);
+    }
+
+    /* ==========================================================================
+       7. UI, Settings & Fullscreen Helpers
+       ========================================================================== */
+    function toggleFullScreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    function updateProviderVisibility() {
+      const prov = document.getElementById('providerSelect').value;
+      const agGroup = document.getElementById('antigravitySettingsGroup');
+      const orGroup = document.getElementById('openrouterSettingsGroup');
+      const gemGroup = document.getElementById('geminiSettingsGroup');
+      if (agGroup) agGroup.style.display = prov === 'antigravity-relay' ? 'block' : 'none';
+      if (orGroup) orGroup.style.display = prov === 'openrouter' ? 'block' : 'none';
+      if (gemGroup) gemGroup.style.display = prov === 'gemini' ? 'block' : 'none';
+    }
+
+    function updateTelemetryPill() {
+      const dot = document.getElementById('geminiDot');
+      const txt = document.getElementById('geminiText');
+      if (!dot || !txt) return;
+      if (apiProvider === 'antigravity-relay') {
+        dot.className = 'dot green';
+        txt.textContent = 'ANTIGRAVITY: PRO RELAY';
+      } else if (apiProvider === 'openrouter') {
+        dot.className = openRouterKey ? 'dot green' : 'dot gold';
+        txt.textContent = openRouterKey ? 'AI: OPENROUTER' : 'OPENROUTER (NO KEY)';
+      } else if (apiProvider === 'gemini') {
+        dot.className = isLiveWsConnected ? 'dot green' : 'dot green';
+        txt.textContent = selectedModel === 'gemini-3.8-live' ? 'GEMINI: LIVE WS' : 'GEMINI: REST';
+      } else {
+        dot.className = 'dot cyan';
+        txt.textContent = 'AI: OFFLINE SMART';
+      }
+    }
+
+    function openSettings() {
+      document.getElementById('providerSelect').value = apiProvider;
+      if (document.getElementById('bridgeUrlInput')) {
+        document.getElementById('bridgeUrlInput').value = bridgeUrl;
+      }
+      document.getElementById('openRouterKeyInput').value = openRouterKey;
+      document.getElementById('openRouterModelSelect').value = openRouterModel;
+      document.getElementById('apiKeyInput').value = apiKey;
+      document.getElementById('modelSelect').value = selectedModel;
+      document.getElementById('voiceSelect').value = selectedVoice;
+      document.getElementById('esp32IpInput').value = esp32Ip;
+      updateProviderVisibility();
+      document.getElementById('settingsModal').classList.add('open');
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsModal').classList.remove('open');
+    }
+
+    function saveSettings() {
+      apiProvider = document.getElementById('providerSelect').value;
+      if (document.getElementById('bridgeUrlInput')) {
+        bridgeUrl = document.getElementById('bridgeUrlInput').value.trim() || (window.location.origin.startsWith('http') ? window.location.origin : 'http://192.168.1.19:8080');
+        localStorage.setItem('AURA_BRIDGE_URL', bridgeUrl);
+      }
+      openRouterKey = document.getElementById('openRouterKeyInput').value.trim();
+      openRouterModel = document.getElementById('openRouterModelSelect').value;
+      apiKey = document.getElementById('apiKeyInput').value.trim() || DEFAULT_API_KEY;
+      selectedModel = document.getElementById('modelSelect').value;
+      selectedVoice = document.getElementById('voiceSelect').value;
+      esp32Ip = document.getElementById('esp32IpInput').value.trim();
+
+      localStorage.setItem('AURA_API_PROVIDER', apiProvider);
+      localStorage.setItem('AURA_OPENROUTER_KEY', openRouterKey);
+      localStorage.setItem('AURA_OPENROUTER_MODEL', openRouterModel);
+      localStorage.setItem('AURA_GEMINI_KEY', apiKey);
+      localStorage.setItem('AURA_GEMINI_MODEL', selectedModel);
+      localStorage.setItem('AURA_VOICE', selectedVoice);
+      localStorage.setItem('AURA_ESP32_IP', esp32Ip);
+
+      if (apiProvider === 'gemini') {
+        initLiveWebSocket();
+      } else if (liveWs) {
+        try { liveWs.close(); } catch(e) {}
+        liveWs = null;
+        isLiveWsConnected = false;
+      }
+      updateTelemetryPill();
+      closeSettings();
+    }
+
+    // Startup Initialization
+    window.addEventListener('DOMContentLoaded', () => {
+      initCamera();
+      initSpeechRecognition();
+      if (apiProvider === 'gemini') {
+        initLiveWebSocket();
+      }
+      updateTelemetryPill();
+      updateContinuousUI();
+      updateSubtitles('AURA-EJUST v3.0', 'Welcome to IEEE RAS E-JUST. Tap anywhere to wake up voice & speech.');
+
+      // Any click or tap on screen unlocks browser audio context and starts listening
+      document.addEventListener('click', unlockAudioAndListen, { once: false });
+      document.addEventListener('touchstart', unlockAudioAndListen, { once: false });
+    });
+  </script>
+</body>
+</html>

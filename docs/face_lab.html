@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>AURA Face Design Lab — Next-Gen Alternatives</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05030a; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; color: #cfe9ff; }
+  #canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  
+  /* Top Concept Switcher Bar */
+  .concept-bar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 10;
+    background: rgba(11,7,20,.85); padding: 6px 10px; border-radius: 99px; border: 1px solid rgba(0,229,255,.3); backdrop-filter: blur(8px); }
+  .btn-concept { padding: 6px 14px; border-radius: 99px; border: 1px solid #2a2040; background: #130c22; color: #9be7ff;
+    font-size: 12px; font-weight: 600; cursor: pointer; transition: all .2s; }
+  .btn-concept.active { background: #00e5ff; color: #05030a; border-color: #00e5ff; box-shadow: 0 0 14px rgba(0,229,255,.45); }
+  
+  /* Bottom Emotion Dock */
+  .dock { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 10;
+    background: rgba(11,7,20,.85); padding: 6px 10px; border-radius: 99px; border: 1px solid rgba(156,39,176,.35); backdrop-filter: blur(8px); flex-wrap: wrap; justify-content: center; max-width: 95vw; }
+  .btn-emo { padding: 5px 11px; border-radius: 99px; border: 1px solid #2a2040; background: #130c22; color: #cfe9ff; font-size: 11px; cursor: pointer; }
+  .btn-emo.active { background: #b388ff; color: #0b0714; border-color: #b388ff; font-weight: 700; }
+
+  /* Concept Info Pill */
+  .info-pill { position: fixed; bottom: 62px; left: 50%; transform: translateX(-50%); z-index: 9; font-size: 12px;
+    letter-spacing: .05em; color: rgba(207,233,255,.75); background: rgba(5,3,10,.6); padding: 4px 14px; border-radius: 99px; text-align: center; pointer-events: none; }
+
+  /* 3D Head Preview Modal */
+  .preview-modal { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
+    display: none; align-items: center; justify-content: center; flex-direction: column; cursor: pointer; }
+  .preview-modal.open { display: flex; }
+  .preview-modal img { max-width: 90vw; max-height: 75vh; border-radius: 18px; border: 2px solid rgba(0,229,255,0.4); box-shadow: 0 0 35px rgba(0,229,255,0.3); }
+  .preview-modal .caption { margin-top: 14px; font-size: 14px; color: #9be7ff; font-weight: 600; letter-spacing: 0.05em; text-align: center; }
+  .preview-modal .close-hint { margin-top: 6px; font-size: 11px; color: rgba(207,233,255,0.5); }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div class="concept-bar">
+  <button class="btn-concept active" onclick="setConcept('pixar')">1. Pixar Soul</button>
+  <button class="btn-concept" onclick="setConcept('cyber')">2. Cyber Aperture</button>
+  <button class="btn-concept" onclick="setConcept('nordic')">3. Nordic Capsule</button>
+  <button class="btn-concept" onclick="setConcept('anime')">4. Japan Star Mecha</button>
+  <button class="btn-concept" id="btn3D" style="border-color:#b388ff; color:#e0c4ff;" onclick="toggle3DPreview()">🖼️ 3D Head Render</button>
+</div>
+
+<div class="preview-modal" id="previewModal" onclick="toggle3DPreview()">
+  <img id="modalImg" src="aura_concept1_pixar_soul.jpg" alt="3D Head Render" />
+  <div class="caption" id="modalCaption">Concept 1: Pixar Soul — 3D Humanoid Head Studio Concept</div>
+  <div class="close-hint">Tap anywhere to close</div>
+</div>
+
+<div class="info-pill" id="infoPill">Concept 1: Pixar Soul — Soulful dual specular gleams & soft organic eyelid curves</div>
+
+<div class="dock">
+  <button class="btn-emo active" onclick="setEmo('NEUTRAL')">Neutral</button>
+  <button class="btn-emo" onclick="setEmo('HAPPY')">Happy</button>
+  <button class="btn-emo" onclick="setEmo('CURIOUS')">Curious</button>
+  <button class="btn-emo" onclick="setEmo('THINKING')">Thinking</button>
+  <button class="btn-emo" onclick="setEmo('LOVE')">Love</button>
+  <button class="btn-emo" onclick="setEmo('SURPRISED')">Surprised</button>
+  <button class="btn-emo" onclick="setEmo('SAD')">Sad</button>
+  <button class="btn-emo" onclick="setEmo('WINK')">Wink</button>
+</div>
+
+<script>
+'use strict';
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+let activeConcept = 'pixar';
+let emotion = 'NEUTRAL';
+const DESCRIPTIONS = {
+  pixar: 'Concept 1: Pixar Soul — Soulful dual specular gleams, organic eyelid arcs & warm living gaze',
+  cyber: 'Concept 2: Cyber Aperture — Precision 12-segment rotating HUD ring, technical cyan core & futuristic aperture',
+  nordic: 'Concept 3: Nordic Capsule — Minimalist Bauhaus lozenges, ultra-clean geometry & dynamic pill morphing',
+  anime: 'Concept 4: Japan Star Mecha — E-JUST Japan heritage, diamond starburst reflections & radiant neon aura'
+};
+
+const CONCEPT_RENDERS = {
+  pixar: { src: 'aura_concept1_pixar_soul.jpg', caption: 'Concept 1: Pixar Soul — 3D Humanoid Head Studio Concept' },
+  cyber: { src: 'aura_concept2_cyber_aperture.jpg', caption: 'Concept 2: Cyber Aperture — 3D Humanoid Head Studio Concept' },
+  nordic: { src: 'aura_concept3_nordic_capsule.jpg', caption: 'Concept 3: Nordic Capsule — 3D Humanoid Head Studio Concept' },
+  anime: { src: 'aura_concept4_japan_star_mecha.jpg', caption: 'Concept 4: Japan Star Mecha — 3D Humanoid Head Studio Concept' }
+};
+
+function toggle3DPreview() {
+  const modal = document.getElementById('previewModal');
+  modal.classList.toggle('open');
+  if (modal.classList.contains('open')) {
+    updateModalImg();
+  }
+}
+window.toggle3DPreview = toggle3DPreview;
+
+function updateModalImg() {
+  const data = CONCEPT_RENDERS[activeConcept] || CONCEPT_RENDERS.pixar;
+  document.getElementById('modalImg').src = data.src;
+  document.getElementById('modalCaption').textContent = data.caption;
+}
+
+function setConcept(c) {
+  activeConcept = c;
+  document.querySelectorAll('.btn-concept').forEach((b, idx) => {
+    if (idx < 4) b.classList.toggle('active', ['pixar','cyber','nordic','anime'][idx] === c);
+  });
+  document.getElementById('infoPill').textContent = DESCRIPTIONS[c] || '';
+  updateModalImg();
+}
+window.setConcept = setConcept;
+
+function setEmo(e) {
+  emotion = e;
+  document.querySelectorAll('.btn-emo').forEach(b => {
+    b.classList.toggle('active', b.textContent.toUpperCase() === e);
+  });
+}
+window.setEmo = setEmo;
+
+// Live Easing State
+const live = {
+  eyeScale: 1, pupilSize: 0.38, blink: 0, mouthCurve: 0.35, mouthOpen: 0,
+  blush: 0, tilt: 0, asym: 0, happyArc: 0, wink: 0, gazeX: 0, gazeY: 0
+};
+const targets = {
+  NEUTRAL:   { scale: 1, pupil: .36, arc: 0, mouthC: .35, mouthO: 0, blush: 0, tilt: 0, asym: 0, wink: 0 },
+  HAPPY:     { scale: 1, pupil: .38, arc: 1, mouthC: .95, mouthO: .25, blush: 1, tilt: 0, asym: 0, wink: 0 },
+  CURIOUS:   { scale: 1, pupil: .42, arc: 0, mouthC: .2,  mouthO: 0, blush: 0, tilt: 6, asym: 1, wink: 0 },
+  THINKING:  { scale: .96,pupil: .32,arc: 0, mouthC: 0,   mouthO: .15, blush: 0, tilt: -4,asym: .5, wink: 0 },
+  LOVE:      { scale: 1.05,pupil:.52,arc: 0, mouthC: .9,  mouthO: .2, blush: 1, tilt: -3,asym: 0, wink: 0 },
+  SURPRISED: { scale: 1.12,pupil:.55,arc: 0, mouthC: 0,   mouthO: .7, blush: .2,tilt: 0, asym: 0, wink: 0 },
+  SAD:       { scale: .94,pupil: .42,arc: 0, mouthC: -.45,mouthO: 0, blush: 0, tilt: -4,asym: 0, wink: 0 },
+  WINK:      { scale: 1, pupil: .38, arc: 0, mouthC: .85, mouthO: .15, blush: .8,tilt: 5, asym: 0, wink: 1 },
+};
+
+let lastT = performance.now(), blinkT = -1, nextBlink = performance.now() + 2200;
+function lerp(a, b, k) { return a + (b - a) * k; }
+
+function update(now) {
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  const t = targets[emotion] || targets.NEUTRAL;
+  const k = 1 - Math.pow(0.001, dt);
+  live.eyeScale = lerp(live.eyeScale, t.scale, k);
+  live.pupilSize = lerp(live.pupilSize, t.pupil, k);
+  live.mouthCurve = lerp(live.mouthCurve, t.mouthC, k);
+  live.mouthOpen = lerp(live.mouthOpen, t.mouthO, k);
+  live.blush = lerp(live.blush, t.blush, k);
+  live.tilt = lerp(live.tilt, t.tilt, k);
+  live.asym = lerp(live.asym, t.asym, k);
+  live.happyArc = lerp(live.happyArc, t.arc, k);
+  live.wink = lerp(live.wink, t.wink, k);
+
+  // Blinking
+  if (blinkT < 0 && now > nextBlink) { blinkT = 0; }
+  if (blinkT >= 0) {
+    blinkT += dt * 7.5;
+    if (blinkT >= 1) { blinkT = -1; nextBlink = now + 2400 + Math.random() * 3200; }
+  }
+  const b = blinkT < 0 ? 0 : Math.sin(Math.min(1, blinkT) * Math.PI);
+  live.blink = b;
+
+  // Gentle micro gaze drift
+  if (emotion === 'THINKING') {
+    live.gazeX = lerp(live.gazeX, 0.45, k);
+    live.gazeY = lerp(live.gazeY, -0.4, k);
+  } else {
+    live.gazeX = lerp(live.gazeX, Math.sin(now * 0.0008) * 0.15, k);
+    live.gazeY = lerp(live.gazeY, Math.cos(now * 0.0011) * 0.08, k);
+  }
+}
+
+function render(now) {
+  update(now);
+  ctx.clearRect(0, 0, W, H);
+  
+  if (activeConcept === 'pixar') drawPixarSoul(now);
+  else if (activeConcept === 'cyber') drawCyberAperture(now);
+  else if (activeConcept === 'nordic') drawNordicCapsule(now);
+  else if (activeConcept === 'anime') drawJapanStarMecha(now);
+
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+
+// =============================================================================
+// CONCEPT 1: PIXAR SOUL (Living Specular Highlights & Organic Soft Eyelid Arcs)
+// =============================================================================
+function drawPixarSoul(now) {
+  // Deep atmospheric porcelain vignette
+  const bg = ctx.createRadialGradient(W/2, H*0.48, 0, W/2, H*0.48, Math.max(W,H)*0.75);
+  bg.addColorStop(0, '#0c0718'); bg.addColorStop(1, '#020106');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const r = Math.min(H * 0.21, W * 0.135);
+  const spacing = Math.min(W * 0.19, r * 2.3);
+  const breathe = Math.sin(now * 0.0018) * r * 0.025;
+  const cx = W / 2, cy = H * 0.44 + breathe;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate((live.tilt * Math.PI) / 180);
+
+  ['L', 'R'].forEach(side => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = s * spacing;
+    let eyeR = r * live.eyeScale;
+    if (live.asym > 0.01 && side === 'L') eyeR *= 1.08;
+    if (live.asym > 0.01 && side === 'R') eyeR *= 0.94;
+    const isWinking = (side === 'R' && live.wink > 0.45);
+
+    ctx.save();
+    ctx.translate(ex, 0);
+
+    // Glowing Cyan / Rose Blush Aura
+    const auraCol = live.blush > 0.3 ? 'rgba(255, 64, 129, 0.28)' : 'rgba(0, 229, 255, 0.22)';
+    const aura = ctx.createRadialGradient(0, 0, eyeR * 0.5, 0, 0, eyeR * 1.55);
+    aura.addColorStop(0, auraCol); aura.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath(); ctx.arc(0, 0, eyeR * 1.55, 0, Math.PI * 2); ctx.fill();
+
+    if (live.happyArc > 0.5 || isWinking) {
+      // Warm smiling crescent eyes
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = eyeR * 0.24;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(0, eyeR * 0.25, eyeR * 0.65, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+    } else {
+      // Sclera / Outer Capsule Clip
+      const bH = (1 - live.blink * 0.92);
+      ctx.save();
+      ctx.scale(1, bH);
+
+      // Outer Iris: Gradient from Deep Indigo to Radiant Electric Cyan
+      const irisGrad = ctx.createRadialGradient(live.gazeX * eyeR * 0.3, live.gazeY * eyeR * 0.3, eyeR * 0.1, 0, 0, eyeR);
+      irisGrad.addColorStop(0, '#00f7ff');
+      irisGrad.addColorStop(0.55, '#0099ff');
+      irisGrad.addColorStop(0.85, '#4a158a');
+      irisGrad.addColorStop(1, '#1b0933');
+
+      ctx.fillStyle = irisGrad;
+      ctx.beginPath();
+      // Organic rounded squircle capsule
+      ctx.arc(0, 0, eyeR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Inner Glowing Ring
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.65)';
+      ctx.lineWidth = eyeR * 0.06;
+      ctx.beginPath();
+      ctx.arc(0, 0, eyeR * 0.88, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Deep Pupil
+      const px = live.gazeX * eyeR * 0.42;
+      const py = live.gazeY * eyeR * 0.36;
+      const pR = eyeR * live.pupilSize;
+      ctx.fillStyle = '#05030a';
+      ctx.beginPath();
+      ctx.arc(px, py, pR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Soulful Dual Pixar Specular Highlights (Glass Reflections)
+      // Primary Glint (Large, top-left)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.beginPath();
+      ctx.arc(px - pR * 0.42, py - pR * 0.42, pR * 0.44, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Secondary Glint (Small, bottom-right reflection)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+      ctx.beginPath();
+      ctx.arc(px + pR * 0.48, py + pR * 0.45, pR * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+    ctx.restore();
+  });
+
+  // Cheeks Blush
+  if (live.blush > 0.05) {
+    [-1, 1].forEach(s => {
+      const bx = s * (spacing + r * 0.25);
+      const by = r * 1.15;
+      const bG = ctx.createRadialGradient(bx, by, 0, bx, by, r * 0.55);
+      bG.addColorStop(0, `rgba(255, 64, 129, ${0.45 * live.blush})`);
+      bG.addColorStop(1, 'rgba(255, 64, 129, 0)');
+      ctx.fillStyle = bG;
+      ctx.beginPath(); ctx.arc(bx, by, r * 0.55, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+
+  // Living Lip-Sync Smile
+  drawPixarMouth(0, r * 1.5, r);
+  ctx.restore();
+}
+
+function drawPixarMouth(x, y, r) {
+  const w = r * 0.95;
+  const c = live.mouthCurve;
+  const open = live.mouthOpen;
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  if (open > 0.08) {
+    // Open animated speaking mouth
+    ctx.fillStyle = 'rgba(0, 229, 255, 0.15)';
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = r * 0.08;
+    ctx.beginPath();
+    ctx.moveTo(-w/2, 0);
+    ctx.quadraticCurveTo(0, r * 0.2 + c * r * 0.4, w/2, 0);
+    ctx.quadraticCurveTo(0, r * 0.2 + open * r * 0.7, -w/2, 0);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    // Elegant clean smile curve
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = r * 0.09;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-w/2, 0);
+    ctx.quadraticCurveTo(0, c * r * 0.55, w/2, 0);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// =============================================================================
+// CONCEPT 2: CYBER APERTURE (Precision Multi-Ring HUD Aperture)
+// =============================================================================
+function drawCyberAperture(now) {
+  ctx.fillStyle = '#03050a'; ctx.fillRect(0, 0, W, H);
+
+  const r = Math.min(H * 0.21, W * 0.135);
+  const spacing = Math.min(W * 0.19, r * 2.3);
+  const cx = W / 2, cy = H * 0.44;
+  const rotAngle = (now * 0.0006) % (Math.PI * 2);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  ['L', 'R'].forEach(side => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = s * spacing;
+    ctx.save();
+    ctx.translate(ex, 0);
+
+    // 1. Segmented Outer Orbital Ring (12 Ticks)
+    ctx.save();
+    ctx.rotate(rotAngle * (side === 'L' ? 1 : -1));
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.35)';
+    ctx.lineWidth = r * 0.04;
+    for (let i = 0; i < 12; i++) {
+      const ang = (i * Math.PI * 2) / 12;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.18, ang, ang + 0.32);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    if (live.happyArc > 0.5) {
+      // Futuristic cyber happy arch with HUD ticks
+      ctx.strokeStyle = '#00f7ff';
+      ctx.lineWidth = r * 0.22;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(0, r * 0.25, r * 0.68, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+    } else {
+      // 2. Technical Outer Glow
+      ctx.shadowColor = '#00f7ff';
+      ctx.shadowBlur = r * 0.35;
+
+      // 3. Iris Housing
+      ctx.fillStyle = '#060c18';
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+
+      // 4. Concentric Tech Rings
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = r * 0.05;
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.88, 0, Math.PI * 2); ctx.stroke();
+
+      // 5. Aperture Blades / Core Iris
+      const pSize = r * live.pupilSize;
+      const px = live.gazeX * r * 0.35, py = live.gazeY * r * 0.3;
+      const coreGrad = ctx.createRadialGradient(px, py, pSize * 0.2, 0, 0, r * 0.82);
+      coreGrad.addColorStop(0, '#00ffff');
+      coreGrad.addColorStop(0.5, '#0077bb');
+      coreGrad.addColorStop(1, '#051833');
+      ctx.fillStyle = coreGrad;
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.82, 0, Math.PI * 2); ctx.fill();
+
+      // Dark Laser Pupil
+      ctx.fillStyle = '#010408';
+      ctx.beginPath(); ctx.arc(px, py, pSize, 0, Math.PI * 2); ctx.fill();
+
+      // Crosshair Laser Dot
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(px, py, r * 0.07, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.restore();
+  });
+
+  // Cyber Chevron Smile
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = r * 0.09;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  const mw = r * 0.9;
+  ctx.moveTo(-mw/2, r * 1.4);
+  ctx.lineTo(0, r * 1.4 + live.mouthCurve * r * 0.45);
+  ctx.lineTo(mw/2, r * 1.4);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// =============================================================================
+// CONCEPT 3: NORDIC CAPSULE (Bauhaus / Teenage Engineering Pill Morphing)
+// =============================================================================
+function drawNordicCapsule(now) {
+  ctx.fillStyle = '#060408'; ctx.fillRect(0, 0, W, H);
+
+  const r = Math.min(H * 0.21, W * 0.135);
+  const spacing = Math.min(W * 0.19, r * 2.3);
+  const cx = W / 2, cy = H * 0.45;
+  const b = live.blink;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  ['L', 'R'].forEach(side => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = s * spacing;
+    const pw = r * 1.55;
+    const ph = Math.max(r * 0.15, r * 1.15 * (1 - b * 0.9));
+
+    ctx.save();
+    ctx.translate(ex, 0);
+
+    // Ultra-clean matte porcelain glow
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = r * 0.4;
+    ctx.fillStyle = '#00e5ff';
+
+    if (live.happyArc > 0.5) {
+      // Rounded smiling arc
+      ctx.lineWidth = r * 0.24; ctx.strokeStyle = '#00e5ff'; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, r * 0.2, r * 0.65, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else {
+      // Bauhaus Horizontal Pill
+      const rad = ph / 2;
+      ctx.beginPath();
+      ctx.roundRect(-pw/2, -ph/2, pw, ph, rad);
+      ctx.fill();
+
+      // Minimalist Inset Dark Core Dot
+      ctx.fillStyle = '#060408';
+      const dx = live.gazeX * pw * 0.25;
+      const dy = live.gazeY * ph * 0.25;
+      ctx.beginPath();
+      ctx.arc(dx, dy, Math.min(ph * 0.38, r * 0.28), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+
+  // Bauhaus Minimalist Smile Line
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = r * 0.1;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  const mw = r * 0.8;
+  ctx.arc(0, r * 1.15, mw * 0.65, Math.PI * (0.35 - live.mouthCurve * 0.15), Math.PI * (0.65 + live.mouthCurve * 0.15));
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// =============================================================================
+// CONCEPT 4: JAPAN STAR MECHA (E-JUST x Japan Heritage, Diamond Sparkles)
+// =============================================================================
+function drawJapanStarMecha(now) {
+  // Deep Japanese indigo-violet nebula
+  const bg = ctx.createRadialGradient(W/2, H*0.46, 0, W/2, H*0.46, Math.max(W,H)*0.8);
+  bg.addColorStop(0, '#100726'); bg.addColorStop(1, '#03010a');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const r = Math.min(H * 0.21, W * 0.135);
+  const spacing = Math.min(W * 0.19, r * 2.3);
+  const cx = W / 2, cy = H * 0.44;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  ['L', 'R'].forEach(side => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = s * spacing;
+    ctx.save();
+    ctx.translate(ex, 0);
+
+    const b = live.blink;
+    const scY = Math.max(0.08, 1 - b * 0.92);
+    ctx.scale(1, scY);
+
+    if (live.happyArc > 0.5) {
+      ctx.strokeStyle = '#ff3388';
+      ctx.lineWidth = r * 0.22;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, r * 0.25, r * 0.65, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else {
+      // Anime Starry Eye Gradient
+      const eyeG = ctx.createLinearGradient(0, -r, 0, r);
+      eyeG.addColorStop(0, '#ff4099');
+      eyeG.addColorStop(0.4, '#8833ff');
+      eyeG.addColorStop(1, '#00d0ff');
+
+      ctx.shadowColor = '#ff4099';
+      ctx.shadowBlur = r * 0.4;
+      ctx.fillStyle = eyeG;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r * 0.95, r * 1.25, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 4-Point Diamond Star Glint (Anime Specular Reflection)
+      const sx = live.gazeX * r * 0.35 - r * 0.28;
+      const sy = live.gazeY * r * 0.3 - r * 0.35;
+      drawStar(sx, sy, r * 0.45, r * 0.14);
+
+      // Secondary cute circular gleam
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.beginPath();
+      ctx.arc(sx + r * 0.45, sy + r * 0.65, r * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+
+  // Anime Cute Blushing Cheeks
+  [-1, 1].forEach(s => {
+    const bx = s * (spacing + r * 0.28);
+    const by = r * 1.15;
+    const bG = ctx.createRadialGradient(bx, by, 0, bx, by, r * 0.5);
+    bG.addColorStop(0, 'rgba(255, 50, 140, 0.55)');
+    bG.addColorStop(1, 'rgba(255, 50, 140, 0)');
+    ctx.fillStyle = bG;
+    ctx.beginPath(); ctx.arc(bx, by, r * 0.5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Cute Cat / Anime Smile (^ w ^)
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = r * 0.09;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  const mw = r * 0.42;
+  // Left curve
+  ctx.arc(-mw, r * 1.45, mw, Math.PI * 0.15, Math.PI * 0.85);
+  // Right curve
+  ctx.arc(mw, r * 1.45, mw, Math.PI * 0.15, Math.PI * 0.85);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawStar(cx, cy, outerR, innerR) {
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const ang = (i * Math.PI) / 2;
+    ctx.lineTo(cx + Math.cos(ang) * outerR, cy + Math.sin(ang) * outerR);
+    const mid = ang + Math.PI / 4;
+    ctx.lineTo(cx + Math.cos(mid) * innerR, cy + Math.sin(mid) * innerR);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+</script>
+</body>
+</html>
