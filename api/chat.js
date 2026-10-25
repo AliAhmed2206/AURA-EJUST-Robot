@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, history = [], context = '', image_b64 } = req.body || {};
+    const { prompt, history = [], context = '', image_b64, model: clientModel } = req.body || {};
     const apiKey = req.headers['x-gemini-key'] || process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     parts.push({ text: fullText });
     contents.push({ role: 'user', parts });
 
-    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    const model = clientModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
     const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
