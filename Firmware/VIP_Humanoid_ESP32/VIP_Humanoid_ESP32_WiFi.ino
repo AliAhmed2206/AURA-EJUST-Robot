@@ -20,9 +20,9 @@
 // 1. WI-FI CREDENTIALS & SECURITY TOKEN CONFIGURATION
 // ======================================================================================
 
-// >>> EDIT YOUR WI-FI CREDENTIALS HERE <<<
-const char* WIFI_SSID     = "Galaxy A24";          // <-- Phone hotspot or venue Wi-Fi SSID
-const char* WIFI_PASSWORD = "auraejustpassword";   // <-- Hotspot or Wi-Fi password
+// >>> PRE-CONFIGURED WITH YOUR EXACT PHONE HOTSPOT <<<
+const char* WIFI_SSID     = "Ali";                 // Hotspot name
+const char* WIFI_PASSWORD = "12345679";            // Hotspot password
 
 // Dedicated Security / Auth Token
 const char* AURA_AUTH_TOKEN = "AURA-EJUST-VIP-2026-TOKEN";
@@ -274,16 +274,19 @@ void postTelemetry(const String& event, const String& extraJson) {
     http.end();
 }
 
+int consecutiveFailures = 0;
+
 void pollRelayCommands() {
     if (WiFi.status() != WL_CONNECTED) return;
 
     HTTPClient http;
     String url = currentServerUrl + "/api/esp32/command?token=" + String(AURA_AUTH_TOKEN);
     http.begin(url);
-    http.setTimeout(500); // 500ms timeout for non-blocking loop
+    http.setTimeout(650); // 650ms timeout for non-blocking loop
 
     int httpCode = http.GET();
     if (httpCode == 200) {
+        consecutiveFailures = 0;
         String payload = http.getString();
         int cmdIdx = payload.indexOf("\"cmd\":");
         if (cmdIdx >= 0) {
@@ -297,6 +300,16 @@ void pollRelayCommands() {
                     }
                 }
             }
+        }
+    } else {
+        consecutiveFailures++;
+        if (consecutiveFailures >= 5 && currentServerUrl == SERVER_BASE_URL) {
+            Serial.println("[WI-FI] Local LAN response pending. Switching to Cloud Tunnel URL...");
+            currentServerUrl = CLOUD_TUNNEL_URL;
+            consecutiveFailures = 0;
+        } else if (consecutiveFailures >= 10 && currentServerUrl == CLOUD_TUNNEL_URL) {
+            currentServerUrl = SERVER_BASE_URL;
+            consecutiveFailures = 0;
         }
     }
     http.end();
