@@ -1,0 +1,2692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#05030a" />
+<meta name="mobile-web-app-capable" content="yes" />
+<title>AURA</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #05030a; overflow: hidden; touch-action: manipulation;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #cfe9ff; }
+  #face { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+
+  /* Wake Button: Tap to start mic, vision & voice */
+  #wake { position: fixed; left: 50%; bottom: 8vh; transform: translateX(-50%); padding: 10px 24px; border-radius: 99px;
+    background: rgba(11,7,20,.85); border: 1px solid rgba(0,229,255,.6); color: #00e5ff; font-size: 13px; font-weight: 700;
+    letter-spacing: .18em; box-shadow: 0 0 22px rgba(0,229,255,.35); cursor: pointer; z-index: 10; pointer-events: auto;
+    animation: breathe 2.2s ease-in-out infinite; white-space: nowrap; backdrop-filter: blur(6px); user-select: none; }
+  @keyframes breathe { 0%,100% { opacity: .35 } 50% { opacity: .9 } }
+
+  /* Optional captions (off by default; enable in settings) */
+  #caption { position: fixed; left: 8vw; right: 8vw; bottom: 3.5vh; text-align: center; font-size: 17px; line-height: 1.35;
+    color: rgba(207,233,255,.75); text-shadow: 0 0 12px rgba(0,229,255,.35); pointer-events: none; display: none; }
+  #caption .you { color: rgba(156,39,176,.95); }
+
+  /* Notice for errors (mic blocked etc.) */
+  #notice { position: fixed; top: 4vh; left: 0; right: 0; text-align: center; font-size: 14px; color: #ffcc66; display: none; pointer-events: none; z-index: 6; }
+
+  /* Top Bar with BLE, Language Toggle, Real-time Hearing Indicator & Camera Mode */
+  #topBar { position: fixed; top: 12px; left: 14px; right: 14px; display: flex; gap: 8px; align-items: center; z-index: 8; pointer-events: none; }
+  #topBar > * { pointer-events: auto; }
+  #bleBadge { padding: 6px 12px; border-radius: 99px; font-size: 11px; letter-spacing: .08em;
+    background: rgba(11,7,20,.75); border: 1px solid rgba(156,39,176,.4); color: rgba(207,233,255,.6); cursor: pointer;
+    transition: all .25s ease; backdrop-filter: blur(6px); }
+  #bleBadge.connected { border-color: rgba(0,229,255,.8); color: #00e5ff; box-shadow: 0 0 12px rgba(0,229,255,.3); }
+
+  #langBadge { padding: 6px 12px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    background: rgba(11,7,20,.75); border: 1px solid rgba(0,229,255,.45); color: #00e5ff; cursor: pointer;
+    backdrop-filter: blur(6px); transition: all .25s ease; user-select: none; }
+  #langBadge:hover { background: rgba(0,229,255,.2); box-shadow: 0 0 12px rgba(0,229,255,.4); }
+
+  #micBadge { padding: 6px 14px; border-radius: 99px; font-size: 11px; letter-spacing: .05em;
+    background: rgba(11,7,20,.75); border: 1px solid rgba(156,39,176,.45); color: rgba(207,233,255,.85); cursor: pointer;
+    backdrop-filter: blur(6px); transition: all .25s ease; max-width: 44vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; }
+  #micBadge.hearing { border-color: #00e5ff; color: #80f8ff; box-shadow: 0 0 14px rgba(0,229,255,.4); }
+  #micBadge.speaking { border-color: #b388ff; color: #e1bee7; }
+  #micBadge.blocked { border-color: #ff4081; color: #ff80ab; background: rgba(35,10,25,.88); animation: pulseWarn 1.2s infinite; }
+  @keyframes pulseWarn { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+  #camBtn { padding: 6px 15px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+    background: rgba(11,7,20,.85); border: 1px solid #00e5ff; color: #00e5ff; cursor: pointer;
+    backdrop-filter: blur(6px); box-shadow: 0 0 12px rgba(0,229,255,.25); transition: all .25s ease; user-select: none; }
+  #camBtn:hover { background: #00e5ff; color: #05030a; box-shadow: 0 0 20px rgba(0,229,255,.6); }
+
+  #nfcBanner { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: 99px;
+    font-size: 13px; font-weight: 600; letter-spacing: .06em; background: rgba(11,7,20,.9); border: 1px solid #00e5ff;
+    color: #e6f4ff; box-shadow: 0 0 22px rgba(0,229,255,.35); z-index: 9; display: none; pointer-events: none; white-space: nowrap; }
+  #nfcBanner.invalid { border-color: #ff4081; color: #ff99bb; box-shadow: 0 0 22px rgba(255,64,129,.4); }
+  #nfcBanner.valid { border-color: #00e5ff; color: #80f8ff; box-shadow: 0 0 22px rgba(0,229,255,.45); }
+
+  /* Dedicated Fullscreen Camera / Vision Mode */
+  #camView { position: fixed; inset: 0; width: 100vw; height: 100vh; background: #000; z-index: 50; display: none; overflow: hidden; }
+  #fullCamVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #camHudCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 51; }
+  .cam-top-bar { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; gap: 10px; align-items: center; z-index: 52; }
+  .hud-pill { padding: 6px 14px; border-radius: 99px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; letter-spacing: .08em;
+    background: rgba(11,7,20,.8); border: 1px solid rgba(0,229,255,.5); color: #00e5ff; backdrop-filter: blur(6px); }
+  .live-pill { color: #00e5ff; border-color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,.35); }
+  .hud-btn { padding: 7px 16px; border-radius: 10px; font-size: 11px; font-weight: 600; letter-spacing: .06em;
+    background: rgba(11,7,20,.85); border: 1px solid #00e5ff; color: #cfe9ff; cursor: pointer; backdrop-filter: blur(6px); transition: all .2s; }
+  .hud-btn:hover { background: #00e5ff; color: #05030a; }
+  .hud-exit { border-color: #ff4081; color: #ff80ab; }
+  .hud-exit:hover { background: #ff4081; color: #fff; }
+  .cam-bottom-bar { position: absolute; bottom: 14px; left: 0; right: 0; display: flex; justify-content: center; z-index: 52; }
+  #camTelemetry { padding: 5px 18px; border-radius: 99px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; letter-spacing: .08em;
+    background: rgba(11,7,20,.8); border: 1px solid rgba(156,39,176,.4); color: rgba(207,233,255,.75); backdrop-filter: blur(6px); }
+
+  /* Settings: hidden; open with a long-press (1 s) anywhere */
+  #settings { position: fixed; inset: 0; background: rgba(5,3,10,.94); display: none; overflow: auto; z-index: 10; }
+  #settings .panel { max-width: 680px; margin: 3vh auto; padding: 22px 26px; border: 1px solid rgba(98,27,109,.6); border-radius: 16px;
+    background: #0b0714; box-shadow: 0 0 40px rgba(156,39,176,.15); }
+  #settings h2 { margin: 0 0 14px; font-size: 16px; letter-spacing: .2em; color: #00e5ff; font-weight: 600; }
+  #settings h3 { margin: 18px 0 8px; font-size: 13px; letter-spacing: .15em; color: #b388ff; font-weight: 600; border-top: 1px solid #221838; padding-top: 14px; }
+  #settings label { display: block; font-size: 12px; letter-spacing: .08em; color: #9aa7c7; margin: 12px 0 5px; }
+  #settings input, #settings select { width: 100%; box-sizing: border-box; padding: 9px 11px; border-radius: 9px; border: 1px solid #2a2140;
+    background: #120c1f; color: #e6f4ff; font-size: 14px; }
+  #settings .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  #settings button { flex: 1; min-width: 130px; padding: 9px 11px; border-radius: 10px; border: 1px solid #3a2a5c; background: #170f29;
+    color: #cfe9ff; font-size: 12px; letter-spacing: .05em; cursor: pointer; }
+  #settings button.primary { border-color: #00e5ff; color: #00e5ff; }
+  #settings button.warn { border-color: #ff4081; color: #ff80ab; }
+  #settings .chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #cfe9ff; margin-top: 10px; }
+  #settings .chk input { width: auto; }
+  .hw-box { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #9be7ff; background: #110b1d;
+    border: 1px solid #271c42; border-radius: 10px; padding: 10px 12px; margin-top: 8px; line-height: 1.5; }
+  #status { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: #7f8bb0; white-space: pre-wrap; margin-top: 14px;
+    max-height: 140px; overflow: auto; border-top: 1px solid #1e1730; padding-top: 10px; }
+  #camPreview { position: fixed; right: 12px; top: 12px; width: 160px; height: 120px; border-radius: 10px; border: 1px solid rgba(0,229,255,.4);
+    display: none; transform: scaleX(-1); z-index: 5; object-fit: cover; }
+</style>
+</head>
+<body>
+<canvas id="face"></canvas>
+<div id="topBar">
+  <div id="bleBadge" title="Tap to pair ESP32 over Bluetooth">● BLE: TAP TO PAIR</div>
+  <div id="langBadge" title="Tap to switch Language (English / العربية)">🌐 EN</div>
+  <div id="micBadge" title="Microphone Status (Tap to unblock/allow)">🎙️ LISTENING</div>
+  <div style="flex:1"></div>
+  <button id="camBtn" title="See what AURA sees in Fullscreen">📷 CAMERA</button>
+</div>
+<div id="nfcBanner"></div>
+<div id="wake">TAP ANYWHERE TO WAKE AURA ⚡</div>
+<div id="caption"></div>
+<div id="notice"></div>
+<video id="cam" playsinline muted style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none"></video>
+<canvas id="camPreview" width="160" height="120"></canvas>
+
+<!-- Dedicated Fullscreen Camera / Vision View -->
+<div id="camView">
+  <video id="fullCamVideo" playsinline autoplay muted></video>
+  <canvas id="camHudCanvas"></canvas>
+  <div class="cam-top-bar">
+    <div class="hud-pill live-pill">● LIVE OPTICAL FEED</div>
+    <div class="hud-pill" id="camTargetInfo">TARGET: SCANNING</div>
+    <div style="flex:1"></div>
+    <button class="hud-btn" id="camFlipBtn">🔄 FLIP LENS</button>
+    <button class="hud-btn hud-exit" id="camCloseBtn">✕ EXIT FULLSCREEN</button>
+  </div>
+  <div class="cam-bottom-bar">
+    <div id="camTelemetry">OPTICAL SENSORS ACTIVE | NORDIC AI TRACKER | 30 FPS</div>
+  </div>
+</div>
+
+<div id="settings">
+  <div class="panel">
+    <h2>AURA SETTINGS</h2>
+    <label>Face Style</label>
+    <select id="sStyle">
+      <option value="nordic" selected>1. Nordic Capsule (Concept 3 - Bauhaus Minimalism)</option>
+      <option value="pixar">2. Pixar Soul (Concept 1 - Living Dual Glints)</option>
+      <option value="cyber">3. Cyber Aperture (Concept 2 - 12-Segment HUD)</option>
+      <option value="anime">4. Japan Star Mecha (Concept 4 - Anime Stars)</option>
+      <option value="bionic">5. Classic Bionic Orbs (Original v1)</option>
+      <option value="cozmo">6. Cozmo / Eilik Glowing Squircles</option>
+      <option value="eve">7. EVE / Astro Sleek Glossy Ovals</option>
+      <option value="kawaii">8. Kawaii Starry Eyes</option>
+      <option value="pixel">9. Retro 8-Bit LED Pixel Matrix</option>
+      <option value="kaomoji">10. Neon Kaomoji Symbols (^ ‿ ^)</option>
+    </select>
+    <label>Brain</label>
+    <select id="sProvider">
+      <option value="relay">Antigravity PC Bridge (recommended)</option>
+      <option value="openrouter">OpenRouter (direct from phone)</option>
+    </select>
+    <label>Bridge URL (leave empty = this page's address)</label>
+    <input id="sBridge" placeholder="https://xxxx.trycloudflare.com" />
+    <label>OpenRouter API key</label>
+    <input id="sOrKey" placeholder="sk-or-..." />
+    <label>OpenRouter model</label>
+    <input id="sOrModel" placeholder="google/gemini-2.0-flash-001" />
+    <label>Listening language</label>
+    <select id="sLang">
+      <option value="en-US">English</option>
+      <option value="ar-EG">العربية (مصري)</option>
+    </select>
+    <label>English voice</label>
+    <select id="sVoice">
+      <option value="en-US-AvaNeural">Ava (warm, fast &amp; natural)</option>
+      <option value="en-US-AriaNeural">Aria (bright, ultra-fast)</option>
+      <option value="en-US-JennyNeural">Jenny (classic assistant)</option>
+      <option value="en-US-GuyNeural">Guy (male)</option>
+    </select>
+    <div class="chk"><input type="checkbox" id="sCaptions" /> <span>Show captions (debug)</span></div>
+    <div class="chk"><input type="checkbox" id="sBrows" checked /> <span>Eyebrows</span></div>
+    <div class="chk"><input type="checkbox" id="sCamPrev" /> <span>Show camera preview (debug)</span></div>
+
+    <h3>ESP32 BLUETOOTH &amp; NFC HARDWARE</h3>
+    <div class="hw-box" id="hwTelemetry">BLE: Disconnected | State: IDLE | Dist: -- cm | IR: ----- | Last NFC: NONE</div>
+    <div class="chk"><input type="checkbox" id="sAllowAnyNfc" /> <span>Accept any unknown NFC card as valid VIP (Demo Override)</span></div>
+    <div class="row">
+      <button class="primary" id="bBle">Pair ESP32 (Bluetooth)</button>
+      <button id="bLearnNfc">Scan Next Card to Register</button>
+    </div>
+    <div class="row">
+      <input id="sNewCardName" placeholder="New Card Guest Name (e.g. Dr. Ahmed)" style="flex:1" />
+      <select id="sNewCardDest" style="flex:1">
+        <option value="Main Conference Hall|1">Main Conference Hall (1 Marker)</option>
+        <option value="E-JUST Grand Theatre|2">E-JUST Grand Theatre (2 Markers)</option>
+        <option value="Robotics Lab & Hall|1">Robotics Lab &amp; Hall (1 Marker)</option>
+      </select>
+    </div>
+    <div class="hw-box" id="nfcListBox"></div>
+
+    <h3>HARDWARE &amp; SIGNAL SIMULATOR / MOTOR CONTROLS</h3>
+    <div class="row">
+      <button id="bSimValidNfc">Sim Valid NFC (Prof. Amr)</button>
+      <button class="warn" id="bSimInvalidNfc">Sim Invalid NFC Card</button>
+      <button class="warn" id="bSimReadErr">Sim NFC Read Error</button>
+    </div>
+    <div class="row">
+      <button id="bSimObstacle">Sim Ultrasonic Obstacle</button>
+      <button id="bSimArrived">Sim Arrived at Hall</button>
+      <button id="bCmdWave">ESP32: Wave Arm</button>
+      <button id="bCmdReset">ESP32: Reset / Stop</button>
+    </div>
+
+    <div class="row" style="margin-top:18px">
+      <button id="bDemo">Play expression demo</button>
+      <button id="bFull">Fullscreen</button>
+      <button class="primary" id="bSave">Save &amp; close</button>
+    </div>
+    <div id="status"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =============================================================================
+   AURA — IEEE RAS E-JUST welcome robot face
+   Face: original v1 bionic eyes (purple rim, cyan/blue iris, cyan smile), now with
+   eyelids, brows, pupil dilation, head tilt and audio-driven lip sync.
+   Brain: Antigravity PC bridge (/api/chat with memory) or OpenRouter.
+   Voice: Edge neural voices via bridge /api/tts, played through Web Audio.
+   Duplex: always-on speech recognition, instant barge-in, echo filtering.
+   ============================================================================= */
+
+// ---------- Config ----------
+const $ = (id) => document.getElementById(id);
+const store = {
+  get: (k, d) => { const v = localStorage.getItem('AURA2_' + k); return v === null ? d : v; },
+  set: (k, v) => localStorage.setItem('AURA2_' + k, v),
+};
+const urlStyle = new URLSearchParams(location.search).get('style');
+const cfg = {
+  style: urlStyle || store.get('style_default_v2', 'nordic'),
+  provider: store.get('provider', 'relay'),
+  bridge: store.get('bridge', ''),
+  orKey: store.get('orKey', ''),
+  orModel: store.get('orModel', 'google/gemini-2.0-flash-001'),
+  lang: store.get('lang', 'en-US'),
+  voice: store.get('voice_fast_v2', 'en-US-AvaNeural'),
+  captions: store.get('captions', '0') === '1',
+  brows: store.get('brows', '1') === '1',
+  camPrev: store.get('camPrev', '0') === '1',
+};
+function setFaceStyle(s) { cfg.style = s; store.set('style_default_v2', s); }
+window.setFaceStyle = setFaceStyle;
+const hasBridge = () => Boolean(cfg.bridge || (location.protocol === 'http:' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1')));
+const bridgeBase = () => (cfg.bridge || (location.protocol === 'http:' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? location.origin : '')).replace(/\/+$/, '');
+const TUNNEL_HEADERS = { 'Bypass-Tunnel-Reminder': 'true' };
+
+const logLines = [];
+function log(...a) {
+  const s = a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ');
+  console.log('[AURA]', s);
+  logLines.push(new Date().toLocaleTimeString() + '  ' + s);
+  if (logLines.length > 60) logLines.shift();
+  const el = $('status'); if (el && $('settings').style.display === 'block') el.textContent = logLines.join('\n');
+}
+function notice(msg, ms = 5000) {
+  const n = $('notice'); n.textContent = msg; n.style.display = msg ? 'block' : 'none';
+  if (msg && ms) setTimeout(() => { if (n.textContent === msg) n.style.display = 'none'; }, ms);
+}
+
+/* =============================================================================
+   1. FACE ENGINE
+   Every expression is a set of target parameters; the live face eases toward
+   them every frame, so all transitions are smooth and organic.
+   ============================================================================= */
+const canvas = $('face');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize); resize();
+
+// lidTop/lidBot: 0 = open, fraction of eye height covered. lidTilt: + = outer corner down (sad), - = outer up.
+// botCurve: + = lower lid bulges up (smiling eyes). brow*: position/tilt/curve. mouth*: smile curve, width, open.
+const EXPR = {
+  SLEEP:     { closed: 1, happyArc: 0, eyeScale: .95, pupil: .36, browY: .10,  browTilt: 0,    browCurve: .10, mouthCurve: .10, mouthW: .50, mouthOpen: 0,   smirk: 0,   tilt: 0,  blush: 0,  love: 0, glow: .45 },
+  NEUTRAL:   { closed: 0, happyArc: 0, eyeScale: 1.0, pupil: .36, browY: 0,    browTilt: 0,    browCurve: .24, mouthCurve: .36, mouthW: .78, mouthOpen: 0,   smirk: 0,   tilt: 0,  blush: 0,  love: 0, glow: 1.0 },
+  LISTENING: { closed: 0, happyArc: 0, eyeScale: 1.05,pupil: .42, browY: -.12, browTilt: -.05, browCurve: .34, mouthCurve: .38, mouthW: .78, mouthOpen: 0,   smirk: 0,   tilt: 3,  blush: .15,love: 0, glow: 1.18 },
+  HAPPY:     { closed: 0, happyArc: 1, eyeScale: 1.0, pupil: .38, browY: -.16, browTilt: -.06, browCurve: .42, mouthCurve: .95, mouthW: .98, mouthOpen: .24, smirk: 0,   tilt: 0,  blush: 1,  love: 0, glow: 1.25 },
+  LOVE:      { closed: 0, happyArc: 0, eyeScale: 1.04,pupil: .52, browY: -.14, browTilt: -.06, browCurve: .40, mouthCurve: .90, mouthW: .90, mouthOpen: .18, smirk: 0,   tilt: -3, blush: 1,  love: 1, glow: 1.28 },
+  CURIOUS:   { closed: 0, happyArc: 0, eyeScale: 1.0, pupil: .42, browY: -.10, browTilt: 0,    browCurve: .32, mouthCurve: .18, mouthW: .65, mouthOpen: 0,   smirk: .35, tilt: 6,  blush: 0,  love: 0, glow: 1.12, asym: 1 },
+  THINKING:  { closed: 0, happyArc: 0, eyeScale: .98, pupil: .34, browY: -.06, browTilt: .08,  browCurve: .24, mouthCurve: .0,  mouthW: .44, mouthOpen: .18, smirk: 0,   tilt: -4, blush: 0,  love: 0, glow: 1.05, think: 1, asym: .6 },
+  SURPRISED: { closed: 0, happyArc: 0, eyeScale: 1.08,pupil: .54, browY: -.28, browTilt: 0,    browCurve: .50, mouthCurve: 0,   mouthW: .34, mouthOpen: .70, smirk: 0,   tilt: 0,  blush: .2, love: 0, glow: 1.3 },
+  SAD:       { closed: 0, happyArc: 0, eyeScale: .96, pupil: .42, browY: .02,  browTilt: .30,  browCurve: .14, mouthCurve: -.48,mouthW: .62, mouthOpen: 0,   smirk: 0,   tilt: -4, blush: 0,  love: 0, glow: .82 },
+  WINK:      { closed: 0, happyArc: 0, eyeScale: 1.0, pupil: .38, browY: -.12, browTilt: -.05, browCurve: .38, mouthCurve: .85, mouthW: .88, mouthOpen: .16, smirk: .28, tilt: 5,  blush: .75,love: 0, glow: 1.2, wink: 1 },
+};
+const ALIASES = { ATTENTIVE: 'NEUTRAL', IN_LOVE: 'LOVE', SPEAKING: 'NEUTRAL', SCEPTIC: 'CURIOUS', TIRED: 'SAD', BROKEN: 'SAD', DENYING: 'CURIOUS', JOY: 'HAPPY' };
+const live = { ...EXPR.SLEEP, think: 0, asym: 0, wink: 0, happyArc: 0, closed: 1, eyeScale: 1 };
+let emotion = 'SLEEP', emotionUntil = 0, baseState = 'SLEEP';
+
+function setEmotion(name, holdMs = 0) {
+  name = (name || 'NEUTRAL').toUpperCase();
+  name = ALIASES[name] || name;
+  if (!EXPR[name]) name = 'NEUTRAL';
+  emotion = name;
+  emotionUntil = holdMs ? performance.now() + holdMs : 0;
+  // A fresh expression should never be hidden by a blink in progress
+  blink.t = -1; blink.next = performance.now() + 1200 + Math.random() * 1500;
+}
+window.setEmotion = setEmotion;
+
+// Gaze, blink, idle life
+const gaze = { x: 0, y: 0, tx: 0, ty: 0, faceSeen: false, lastSaccade: 0 };
+const blink = { t: -1, next: performance.now() + 2000, double: false };
+let mouthLevel = 0;          // 0..1 from real audio amplitude
+let speakingAnim = false;    // true while AURA's voice is playing
+
+function lerp(a, b, k) { return a + (b - a) * k; }
+
+function updateLive(now, dt) {
+  if (emotionUntil && now > emotionUntil) { emotionUntil = 0; emotion = baseState; }
+  const target = EXPR[emotion] || EXPR.NEUTRAL;
+  const k = 1 - Math.pow(0.0009, dt);  // frame-rate independent easing (~fast but soft)
+  for (const key of Object.keys(live)) live[key] = lerp(live[key], target[key] || 0, k);
+
+  // Blinking (not while sleeping); occasional double blink like a real person
+  if (emotion !== 'SLEEP') {
+    if (blink.t < 0 && now > blink.next) { blink.t = 0; }
+    if (blink.t >= 0) {
+      blink.t += dt * 7.5;
+      if (blink.t >= 1) {
+        blink.t = -1;
+        if (!blink.double && Math.random() < 0.18) { blink.double = true; blink.next = now + 140; }
+        else { blink.double = false; blink.next = now + 2200 + Math.random() * 3800; }
+      }
+    }
+  } else blink.t = -1;
+
+  // Gaze: follow visitor if seen, otherwise drift around like an idle person (micro-saccades)
+  if (emotion === 'THINKING') {
+    gaze.tx = 0.45 + Math.sin(now * 0.0007) * 0.12; gaze.ty = -0.55;
+  } else if (!gaze.faceSeen && now - gaze.lastSaccade > 1400 + Math.random() * 2600) {
+    gaze.lastSaccade = now;
+    const roam = emotion === 'SLEEP' ? 0 : 0.5;
+    gaze.tx = (Math.random() * 2 - 1) * roam; gaze.ty = (Math.random() * 2 - 1) * roam * 0.45;
+    if (Math.random() < 0.35) { gaze.tx = 0; gaze.ty = 0; }
+  }
+  const gk = 1 - Math.pow(0.00002, dt); // saccades are quick
+  gaze.x = lerp(gaze.x, gaze.tx, gk); gaze.y = lerp(gaze.y, gaze.ty, gk);
+
+  // Mouth from audio
+  const targetMouth = speakingAnim ? mouthLevel : 0;
+  mouthLevel *= 0.9;
+  live.talk = lerp(live.talk || 0, targetMouth, 1 - Math.pow(0.00001, dt));
+}
+
+function blinkAmount() { return blink.t < 0 ? 0 : Math.sin(Math.min(1, blink.t) * Math.PI); }
+
+let lastFrame = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
+  updateLive(now, dt);
+  draw(now);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+function draw(now) {
+  ctx.clearRect(0, 0, W, H);
+  const style = cfg.style || 'nordic';
+  if (style === 'nordic') return drawNordicCapsule(now);
+  if (style === 'pixar') return drawPixarSoul(now);
+  if (style === 'cyber') return drawCyberAperture(now);
+  if (style === 'anime') return drawJapanStarMecha(now);
+  if (style === 'bionic') return drawBionicFace(now);
+  if (style === 'cozmo') return drawCozmoFace(now);
+  if (style === 'eve') return drawEveFace(now);
+  if (style === 'kawaii') return drawKawaiiFace(now);
+  if (style === 'pixel') return drawPixelFace(now);
+  if (style === 'kaomoji') return drawKaomojiFace(now);
+  return drawNordicCapsule(now);
+}
+
+/* --- Concept 3: Nordic Capsule (Bauhaus Minimalism & Dynamic Lozenges) --- */
+function drawNordicCapsule(now) {
+  const bg = ctx.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, Math.max(W, H) * 0.75);
+  bg.addColorStop(0, '#090610'); bg.addColorStop(1, '#020105');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const r = Math.min(H * 0.21, W * 0.135);
+  const spacing = Math.min(W * 0.19, r * 2.3);
+  const breathe = Math.sin(now * 0.0016) * r * 0.025;
+  const cx = W / 2 + gaze.x * r * 0.32;
+  const eyeY = H * 0.44 + breathe + gaze.y * r * 0.25;
+  const b = Math.max(live.closed || 0, blinkAmount());
+
+  ctx.save();
+  ctx.translate(cx, H * 0.52);
+  ctx.rotate((live.tilt * Math.PI) / 180);
+  ctx.translate(-cx, -H * 0.52);
+
+  const col = live.love > 0.4 ? '#ff55b8' : '#00f0ff';
+
+  ['L', 'R'].forEach(side => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = cx + s * spacing;
+    let scY = (live.eyeScale || 1) * (1 - b * 0.92);
+    if (live.asym > 0.01) scY *= (side === 'L' ? 1.08 : 0.88);
+
+    const pw = r * 1.55;
+    const ph = Math.max(r * 0.14, r * 1.15 * scY);
+
+    ctx.save();
+    ctx.translate(ex, eyeY + (live.asym > 0.01 && side === 'L' ? -r * 0.08 : 0));
+
+    if (live.browTilt > 0.08) {
+      ctx.rotate(s * live.browTilt * 0.18);
+    }
+
+    ctx.shadowColor = col;
+    ctx.shadowBlur = r * 0.42 * (live.glow || 1);
+    ctx.fillStyle = col;
+
+    if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55)) {
+      ctx.lineWidth = r * 0.24; ctx.strokeStyle = col; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, r * 0.2, r * 0.65, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else {
+      const rad = Math.min(ph / 2, pw / 2);
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(-pw / 2, -ph / 2, pw, ph, rad);
+      } else {
+        const p = roundRectPath(-pw / 2, -ph / 2, pw, ph, rad);
+        ctx.fill(p);
+      }
+      ctx.fill();
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#060408';
+      const dx = gaze.x * pw * 0.24;
+      const dy = gaze.y * ph * 0.24;
+      ctx.beginPath();
+      ctx.arc(dx, dy, Math.min(ph * 0.38, r * 0.26), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+
+  if (live.blush > 0.02) {
+    drawBlush(cx - spacing - r * 0.15, eyeY + r * 0.95, r * 0.52, live.blush);
+    drawBlush(cx + spacing + r * 0.15, eyeY + r * 0.95, r * 0.52, live.blush);
+  }
+
+  drawMouth(cx, H * 0.745 + breathe * 0.5, r * 0.85, now);
+  ctx.restore();
+}
+
+/* --- Concept 1: Pixar Soul (Living Specular Highlights & Organic Eyelid Arcs) --- */
+function drawPixarSoul(now) {
+  const bg = ctx.createRadialGradient(W / 2, H * 0.48, 0, W / 2, H * 0.48, Math.max(W, H) * 0.75);
+  bg.addColorStop(0, '#0c0718'); bg.addColorStop(1, '#020106');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const r = Math.min(H * 0.21, W * 0.135);
+  const spacing = Math.min(W * 0.19, r * 2.3);
+  const breathe = Math.sin(now * 0.0018) * r * 0.025;
+  const cx = W / 2 + gaze.x * r * 0.32;
+  const cy = H * 0.44 + breathe + gaze.y * r * 0.25;
+  const b = Math.max(live.closed || 0, blinkAmount());
+
+  ctx.save();
+  ctx.translate(cx, H * 0.52);
+  ctx.rotate((live.tilt * Math.PI) / 180);
+  ctx.translate(-cx, -H * 0.52);
+
+  ['L', 'R'].forEach(side => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = cx + s * spacing;
+    let eyeR = r * (live.eyeScale || 1);
+    if (live.asym > 0.01 && side === 'L') eyeR *= 1.08;
+    if (live.asym > 0.01 && side === 'R') eyeR *= 0.94;
+    const isWinking = (side === 'R' && live.wink > 0.45);
+
+    ctx.save();
+    ctx.translate(ex, cy);
+
+    const auraCol = live.blush > 0.3 ? 'rgba(255, 64, 129, 0.28)' : 'rgba(0, 229, 255, 0.22)';
+    const aura = ctx.createRadialGradient(0, 0, eyeR * 0.5, 0, 0, eyeR * 1.55);
+    aura.addColorStop(0, auraCol); aura.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath(); ctx.arc(0, 0, eyeR * 1.55, 0, Math.PI * 2); ctx.fill();
+
+    if (live.happyArc > 0.5 || isWinking) {
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = eyeR * 0.24; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, eyeR * 0.25, eyeR * 0.65, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else {
+      const bH = Math.max(0.08, 1 - b * 0.92);
+      ctx.save();
+      ctx.scale(1, bH);
+
+      const irisGrad = ctx.createRadialGradient(gaze.x * eyeR * 0.3, gaze.y * eyeR * 0.3, eyeR * 0.1, 0, 0, eyeR);
+      irisGrad.addColorStop(0, '#00f7ff');
+      irisGrad.addColorStop(0.55, '#0099ff');
+      irisGrad.addColorStop(0.85, '#4a158a');
+      irisGrad.addColorStop(1, '#1b0933');
+      ctx.fillStyle = irisGrad;
+      ctx.beginPath(); ctx.arc(0, 0, eyeR, 0, Math.PI * 2); ctx.fill();
+
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.65)';
+      ctx.lineWidth = eyeR * 0.06;
+      ctx.beginPath(); ctx.arc(0, 0, eyeR * 0.88, 0, Math.PI * 2); ctx.stroke();
+
+      const px = gaze.x * eyeR * 0.42;
+      const py = gaze.y * eyeR * 0.36;
+      const pR = eyeR * (live.pupilSize || 0.38);
+      ctx.fillStyle = '#05030a';
+      ctx.beginPath(); ctx.arc(px, py, pR, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.beginPath(); ctx.arc(px - pR * 0.42, py - pR * 0.42, pR * 0.44, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+      ctx.beginPath(); ctx.arc(px + pR * 0.48, py + pR * 0.45, pR * 0.22, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  });
+
+  if (live.blush > 0.02) {
+    drawBlush(cx - spacing - r * 0.15, cy + r * 0.95, r * 0.52, live.blush);
+    drawBlush(cx + spacing + r * 0.15, cy + r * 0.95, r * 0.52, live.blush);
+  }
+  drawMouth(cx, H * 0.745 + breathe * 0.5, r * 0.85, now);
+  ctx.restore();
+}
+
+/* --- Concept 2: Cyber Aperture (Precision 12-Segment HUD Mechatronics) --- */
+function drawCyberAperture(now) {
+  ctx.fillStyle = '#03050a'; ctx.fillRect(0, 0, W, H);
+  const r = Math.min(H * 0.21, W * 0.135);
+  const spacing = Math.min(W * 0.19, r * 2.3);
+  const cx = W / 2 + gaze.x * r * 0.3;
+  const cy = H * 0.44 + gaze.y * r * 0.25;
+  const rotAngle = (now * 0.0006) % (Math.PI * 2);
+  const b = Math.max(live.closed || 0, blinkAmount());
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  ['L', 'R'].forEach(side => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = s * spacing;
+    ctx.save();
+    ctx.translate(ex, 0);
+
+    ctx.save();
+    ctx.rotate(rotAngle * (side === 'L' ? 1 : -1));
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.38)';
+    ctx.lineWidth = r * 0.04;
+    for (let i = 0; i < 12; i++) {
+      const ang = (i * Math.PI * 2) / 12;
+      ctx.beginPath(); ctx.arc(0, 0, r * 1.18, ang, ang + 0.32); ctx.stroke();
+    }
+    ctx.restore();
+
+    if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55)) {
+      ctx.strokeStyle = '#00f7ff';
+      ctx.lineWidth = r * 0.22; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, r * 0.25, r * 0.68, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else {
+      ctx.save();
+      ctx.scale(1, Math.max(0.08, 1 - b * 0.92));
+      ctx.shadowColor = '#00f7ff'; ctx.shadowBlur = r * 0.35;
+      ctx.fillStyle = '#060c18';
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+
+      ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = r * 0.05;
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.88, 0, Math.PI * 2); ctx.stroke();
+
+      const pSize = r * (live.pupilSize || 0.36);
+      const px = gaze.x * r * 0.35, py = gaze.y * r * 0.3;
+      const coreGrad = ctx.createRadialGradient(px, py, pSize * 0.2, 0, 0, r * 0.82);
+      coreGrad.addColorStop(0, '#00ffff'); coreGrad.addColorStop(0.5, '#0077bb'); coreGrad.addColorStop(1, '#051833');
+      ctx.fillStyle = coreGrad;
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.82, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = '#010408';
+      ctx.beginPath(); ctx.arc(px, py, pSize, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(px, py, r * 0.07, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  });
+
+  drawMouth(0, r * 1.45, r * 0.85, now);
+  ctx.restore();
+}
+
+/* --- Concept 4: Japan Star Mecha (Anime Sparkle & Heritage) --- */
+function drawJapanStarMecha(now) {
+  const bg = ctx.createRadialGradient(W / 2, H * 0.46, 0, W / 2, H * 0.46, Math.max(W, H) * 0.8);
+  bg.addColorStop(0, '#100726'); bg.addColorStop(1, '#03010a');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const r = Math.min(H * 0.21, W * 0.135);
+  const spacing = Math.min(W * 0.19, r * 2.3);
+  const cx = W / 2 + gaze.x * r * 0.32;
+  const cy = H * 0.44 + gaze.y * r * 0.25;
+  const b = Math.max(live.closed || 0, blinkAmount());
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  ['L', 'R'].forEach(side => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = s * spacing;
+    ctx.save();
+    ctx.translate(ex, 0);
+
+    const scY = Math.max(0.08, 1 - b * 0.92);
+    ctx.scale(1, scY);
+
+    if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55)) {
+      ctx.strokeStyle = '#ff3388'; ctx.lineWidth = r * 0.22; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, r * 0.25, r * 0.65, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else {
+      const eyeG = ctx.createLinearGradient(0, -r, 0, r);
+      eyeG.addColorStop(0, '#ff4099'); eyeG.addColorStop(0.4, '#8833ff'); eyeG.addColorStop(1, '#00d0ff');
+      ctx.shadowColor = '#ff4099'; ctx.shadowBlur = r * 0.4;
+      ctx.fillStyle = eyeG;
+      ctx.beginPath(); ctx.ellipse(0, 0, r * 0.95, r * 1.25, 0, 0, Math.PI * 2); ctx.fill();
+
+      const sx = gaze.x * r * 0.35 - r * 0.28;
+      const sy = gaze.y * r * 0.3 - r * 0.35;
+      drawDiamondStar4(sx, sy, r * 0.45, r * 0.14);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.beginPath(); ctx.arc(sx + r * 0.45, sy + r * 0.65, r * 0.16, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  });
+
+  [-1, 1].forEach(s => {
+    const bx = s * (spacing + r * 0.28), by = r * 1.15;
+    const bG = ctx.createRadialGradient(bx, by, 0, bx, by, r * 0.5);
+    bG.addColorStop(0, 'rgba(255, 50, 140, 0.55)'); bG.addColorStop(1, 'rgba(255, 50, 140, 0)');
+    ctx.fillStyle = bG;
+    ctx.beginPath(); ctx.arc(bx, by, r * 0.5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  drawMouth(0, r * 1.45, r * 0.85, now);
+  ctx.restore();
+}
+
+function drawDiamondStar4(cx, cy, outerR, innerR) {
+  ctx.save(); ctx.fillStyle = '#ffffff'; ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const ang = (i * Math.PI) / 2;
+    ctx.lineTo(cx + Math.cos(ang) * outerR, cy + Math.sin(ang) * outerR);
+    const mid = ang + Math.PI / 4;
+    ctx.lineTo(cx + Math.cos(mid) * innerR, cy + Math.sin(mid) * innerR);
+  }
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+/* --- Classic Option 5: Original Bionic Orbs --- */
+function drawBionicFace(now) {
+  const bg = ctx.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, Math.max(W, H) * 0.75);
+  bg.addColorStop(0, '#0d0818'); bg.addColorStop(1, '#030207');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const r = Math.min(H * 0.205, W * 0.13);
+  const spacing = Math.min(W * 0.19, r * 2.35);
+  const breathe = Math.sin(now * 0.0016) * r * 0.025;
+  const cx = W / 2, eyeY = H * 0.42 + breathe;
+
+  ctx.save();
+  ctx.translate(cx, H * 0.55);
+  ctx.rotate((live.tilt * Math.PI) / 180);
+  ctx.translate(-cx, -H * 0.55);
+
+  const b = blinkAmount();
+  drawEye(cx - spacing, eyeY, r, 'L', b, now);
+  drawEye(cx + spacing, eyeY, r, 'R', b, now);
+
+  if (live.blush > 0.02) {
+    drawBlush(cx - spacing - r * 0.15, eyeY + r * 1.15, r * 0.6, live.blush);
+    drawBlush(cx + spacing + r * 0.15, eyeY + r * 1.15, r * 0.6, live.blush);
+  }
+  drawMouth(cx, H * 0.755 + breathe * 0.6, r, now);
+  ctx.restore();
+}
+
+/* --- Option 2: Cozmo / Eilik Rounded Visor Squircles --- */
+function roundRectPath(x, y, w, h, rad) {
+  const r = Math.min(rad, w / 2, h / 2);
+  const p = new Path2D();
+  p.moveTo(x + r, y);
+  p.arcTo(x + w, y, x + w, y + h, r);
+  p.arcTo(x + w, y + h, x, y + h, r);
+  p.arcTo(x, y + h, x, y, r);
+  p.arcTo(x, y, x + w, y, r);
+  p.closePath();
+  return p;
+}
+
+function drawCozmoFace(now) {
+  ctx.fillStyle = '#03070e'; ctx.fillRect(0, 0, W, H);
+  const r = Math.min(H * 0.22, W * 0.14);
+  const spacing = Math.min(W * 0.18, r * 2.15);
+  const breathe = Math.sin(now * 0.0018) * r * 0.03;
+  const cx = W / 2 + gaze.x * r * 0.35, eyeY = H * 0.44 + breathe + gaze.y * r * 0.28;
+  const b = Math.max(live.closed || 0, blinkAmount());
+
+  ctx.save();
+  ctx.translate(cx, H * 0.5); ctx.rotate((live.tilt * Math.PI) / 180); ctx.translate(-cx, -H * 0.5);
+
+  ['L', 'R'].forEach((side) => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = cx + s * spacing;
+    let scY = (live.eyeScale || 1) * (1 - b * 0.92);
+    if (live.asym > 0.01) scY *= (side === 'L' ? 1.08 : 0.76);
+    const ew = r * 1.35, eh = Math.max(r * 0.12, r * 1.55 * scY);
+    ctx.save();
+    ctx.translate(ex, eyeY + (live.asym > 0.01 && side === 'L' ? -r * 0.1 : 0));
+
+    const col = live.love > 0.4 ? '#ff55b8' : '#00f0ff';
+    ctx.shadowColor = col; ctx.shadowBlur = r * 0.35 * live.glow;
+    ctx.fillStyle = col;
+
+    if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55)) {
+      ctx.strokeStyle = col; ctx.lineWidth = r * 0.22; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, r * 0.25, r * 0.65, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else if (live.love > 0.5) {
+      heart(0, r * 0.1, r * 0.95);
+    } else {
+      const p = roundRectPath(-ew / 2, -eh / 2, ew, eh, r * 0.42);
+      ctx.fill(p);
+      // Inner bright core
+      ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fill(roundRectPath(-ew * 0.32, -eh * 0.34, ew * 0.42, eh * 0.38, r * 0.2));
+      // Slanted brow cut for SAD / THINKING
+      if (live.browTilt > 0.1) {
+        ctx.fillStyle = '#03070e';
+        ctx.beginPath();
+        ctx.moveTo(-ew * 0.6, -eh * 0.6); ctx.lineTo(ew * 0.6, -eh * 0.6);
+        ctx.lineTo(ew * 0.6 * s, -eh * 0.15); ctx.lineTo(-ew * 0.6 * s, -eh * 0.52);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+    ctx.restore();
+  });
+
+  if (live.blush > 0.02) {
+    drawBlush(cx - spacing - r * 0.25, eyeY + r * 0.95, r * 0.5, live.blush);
+    drawBlush(cx + spacing + r * 0.25, eyeY + r * 0.95, r * 0.5, live.blush);
+  }
+  drawMouth(cx, H * 0.74 + breathe * 0.5, r * 0.85, now);
+  ctx.restore();
+}
+
+/* --- Option 3: EVE / Astro Sleek Glossy Ovals --- */
+function drawEveFace(now) {
+  ctx.fillStyle = '#020409'; ctx.fillRect(0, 0, W, H);
+  const r = Math.min(H * 0.21, W * 0.135);
+  const spacing = Math.min(W * 0.185, r * 2.2);
+  const breathe = Math.sin(now * 0.0016) * r * 0.025;
+  const cx = W / 2 + gaze.x * r * 0.32, eyeY = H * 0.44 + breathe + gaze.y * r * 0.25;
+  const b = Math.max(live.closed || 0, blinkAmount());
+
+  ctx.save();
+  ctx.translate(cx, H * 0.5); ctx.rotate((live.tilt * Math.PI) / 180); ctx.translate(-cx, -H * 0.5);
+
+  ['L', 'R'].forEach((side) => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = cx + s * spacing;
+    ctx.save();
+    ctx.translate(ex, eyeY);
+    const tiltAngle = s * (-0.10 + live.browTilt * 0.35);
+    ctx.rotate(tiltAngle);
+
+    const col = live.love > 0.4 ? '#ff6ad5' : '#38e8ff';
+    ctx.shadowColor = col; ctx.shadowBlur = r * 0.42 * live.glow;
+
+    if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55)) {
+      ctx.strokeStyle = col; ctx.lineWidth = r * 0.18; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, r * 0.2, r * 0.72, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else {
+      const rx = r * 0.95, ry = Math.max(r * 0.08, r * 0.68 * (1 - b * 0.92) * (live.asym > 0.01 && side === 'R' ? 0.78 : 1));
+      const g = ctx.createRadialGradient(0, -ry * 0.2, ry * 0.1, 0, 0, rx);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(0.35, col); g.addColorStop(1, '#0066cc');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+
+      // Subtle EVE horizontal scanlines inside the oval
+      ctx.save();
+      ctx.clip();
+      ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(0, 12, 28, 0.22)';
+      for (let y = -ry; y < ry; y += 5) ctx.fillRect(-rx, y, rx * 2, 2);
+      ctx.restore();
+    }
+    ctx.restore();
+  });
+
+  if (live.blush > 0.02) {
+    drawBlush(cx - spacing - r * 0.15, eyeY + r * 0.95, r * 0.52, live.blush);
+    drawBlush(cx + spacing + r * 0.15, eyeY + r * 0.95, r * 0.52, live.blush);
+  }
+  drawMouth(cx, H * 0.73 + breathe * 0.5, r * 0.72, now);
+  ctx.restore();
+}
+
+/* --- Option 4: Anime / Kawaii Sparkling Starry Eyes --- */
+function drawStar(x, y, rad) {
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = (i * Math.PI) / 4;
+    const d = i % 2 === 0 ? rad : rad * 0.32;
+    i ? ctx.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d) : ctx.moveTo(x + Math.cos(a) * d, y + Math.sin(a) * d);
+  }
+  ctx.closePath(); ctx.fill();
+}
+
+function drawKawaiiFace(now) {
+  const bg = ctx.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, Math.max(W, H) * 0.75);
+  bg.addColorStop(0, '#12091c'); bg.addColorStop(1, '#05020a');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const r = Math.min(H * 0.215, W * 0.135);
+  const spacing = Math.min(W * 0.19, r * 2.25);
+  const breathe = Math.sin(now * 0.0018) * r * 0.025;
+  const cx = W / 2, eyeY = H * 0.43 + breathe;
+  const b = Math.max(live.closed || 0, blinkAmount());
+
+  ctx.save();
+  ctx.translate(cx, H * 0.52); ctx.rotate((live.tilt * Math.PI) / 180); ctx.translate(-cx, -H * 0.52);
+
+  ['L', 'R'].forEach((side) => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = cx + s * spacing;
+    ctx.save(); ctx.translate(ex, eyeY);
+
+    if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55) || b > 0.9) {
+      ctx.strokeStyle = '#ff77e9'; ctx.lineWidth = r * 0.13; ctx.lineCap = 'round';
+      ctx.shadowColor = '#ff77e9'; ctx.shadowBlur = r * 0.25;
+      ctx.beginPath(); ctx.arc(0, r * 0.1, r * 0.7, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke();
+      ctx.restore(); return;
+    }
+
+    const rx = r * 0.88, ry = r * 1.05 * (1 - b * 0.92);
+    const px = gaze.x * r * 0.28, py = gaze.y * r * 0.24;
+
+    // Outer anime iris
+    const g = ctx.createLinearGradient(0, -ry, 0, ry);
+    g.addColorStop(0, '#2a0845'); g.addColorStop(0.45, live.love > 0.4 ? '#ff2a85' : '#7b2cbf'); g.addColorStop(1, '#00f5d4');
+    ctx.fillStyle = g; ctx.shadowColor = '#c77dff'; ctx.shadowBlur = r * 0.25;
+    ctx.beginPath(); ctx.ellipse(px * 0.4, py * 0.4, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Deep upper pupil shade
+    ctx.fillStyle = 'rgba(12, 4, 24, 0.72)';
+    ctx.beginPath(); ctx.ellipse(px, py - ry * 0.08, rx * 0.52, ry * 0.52, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Glowing lower crescent inside iris
+    ctx.fillStyle = 'rgba(120, 255, 240, 0.55)';
+    ctx.beginPath(); ctx.ellipse(px, py + ry * 0.42, rx * 0.55, ry * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+
+    // Big Kawaii catchlights + 4-point star
+    ctx.fillStyle = '#ffffff'; ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.arc(px - rx * 0.32, py - ry * 0.34, rx * 0.26, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px + rx * 0.28, py + ry * 0.28, rx * 0.13, 0, Math.PI * 2); ctx.fill();
+    if (live.love > 0.5) { ctx.fillStyle = '#ff99df'; heart(px, py + ry * 0.05, rx * 0.38); }
+    else drawStar(px + rx * 0.26, py - ry * 0.22, rx * 0.20);
+
+    // Bold upper eyelash arch
+    ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = r * 0.10; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(0, ry * 0.08, rx * 1.02, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke();
+    ctx.restore();
+  });
+
+  // Always subtle cute blush on Kawaii mode
+  const bl = Math.max(0.45, live.blush);
+  drawBlush(cx - spacing - r * 0.2, eyeY + r * 1.05, r * 0.65, bl);
+  drawBlush(cx + spacing + r * 0.2, eyeY + r * 1.05, r * 0.65, bl);
+
+  // Cute cat-smile (ω) when neutral/happy and not speaking, or open mouth when speaking
+  const open = live.talk > 0.05 ? Math.min(1.2, live.mouthOpen + live.talk * 0.9) : (live.mouthOpen > 0.45 ? live.mouthOpen : 0);
+  if (open < 0.15 && live.mouthCurve >= 0) {
+    const mw = r * 0.46;
+    ctx.save(); ctx.translate(cx, H * 0.74 + breathe * 0.5);
+    ctx.strokeStyle = '#ff85e4'; ctx.shadowColor = '#ff85e4'; ctx.shadowBlur = 12;
+    ctx.lineWidth = Math.max(4, r * 0.052); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.arc(-mw * 0.5, 0, mw * 0.5, Math.PI - 0.15, 0.06, true);
+    ctx.arc(mw * 0.5, 0, mw * 0.5, Math.PI - 0.06, 0.15, true);
+    ctx.stroke(); ctx.restore();
+  } else {
+    drawMouth(cx, H * 0.745 + breathe * 0.5, r * 0.85, now);
+  }
+  ctx.restore();
+}
+
+/* --- Option 5: Retro 8-Bit LED Pixel Matrix --- */
+function drawPixelFace(now) {
+  ctx.fillStyle = '#04060a'; ctx.fillRect(0, 0, W, H);
+  const cols = 32, rows = 18;
+  const cell = Math.min(W / (cols + 4), H / (rows + 4));
+  const ox = (W - cols * cell) / 2, oy = (H - rows * cell) / 2;
+  const grid = Array.from({ length: rows }, () => Array(cols).fill(null));
+  const setPx = (x, y, c) => { x = Math.round(x); y = Math.round(y); if (y >= 0 && y < rows && x >= 0 && x < cols) grid[y][x] = c; };
+
+  const gx = Math.round(gaze.x * 2), gy = Math.round(gaze.y * 1);
+  const b = Math.max(live.closed || 0, blinkAmount());
+  const col = live.love > 0.4 ? '#ff4da6' : '#00f2fe';
+
+  const drawPxEye = (cx, cy, side) => {
+    if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55)) {
+      [[-3,1],[-2,0],[-1,-1],[0,-1],[1,-1],[2,0],[3,1],[-3,0],[3,0]].forEach(([dx,dy]) => setPx(cx+dx, cy+dy, col));
+      return;
+    }
+    if (b > 0.7) {
+      for (let dx = -3; dx <= 3; dx++) setPx(cx + dx, cy, col);
+      return;
+    }
+    if (live.love > 0.5) {
+      const h = [[-2,-2],[-1,-2],[1,-2],[2,-2],[-3,-1],[-2,-1],[-1,-1],[0,-1],[1,-1],[2,-1],[3,-1],[-3,0],[-2,0],[-1,0],[0,0],[1,0],[2,0],[3,0],[-2,1],[-1,1],[0,1],[1,1],[2,1],[-1,2],[0,2],[1,2],[0,3]];
+      h.forEach(([dx, dy]) => setPx(cx + dx, cy + dy, '#ff4da6'));
+      return;
+    }
+    for (let dy = -3; dy <= 3; dy++) {
+      for (let dx = -3; dx <= 3; dx++) {
+        if (Math.abs(dx) === 3 && Math.abs(dy) === 3) continue;
+        setPx(cx + dx + gx, cy + dy + gy, col);
+      }
+    }
+    // Glint & pupil
+    setPx(cx - 1 + gx, cy - 1 + gy, '#ffffff');
+    setPx(cx - 2 + gx, cy - 2 + gy, '#ffffff');
+  };
+
+  drawPxEye(9, 7, 'L');
+  drawPxEye(22, 7, 'R');
+
+  // Pixel blush
+  if (live.blush > 0.2) {
+    [[4,11],[5,11],[26,11],[27,11]].forEach(([x,y]) => setPx(x, y, '#ff5599'));
+  }
+
+  // Pixel mouth
+  const my = 13;
+  const open = live.mouthOpen + live.talk * 0.9;
+  if (open > 0.25) {
+    for (let x = 13; x <= 18; x++) { setPx(x, my - 1, col); setPx(x, my + 2, col); }
+    setPx(12, my, col); setPx(12, my + 1, col); setPx(19, my, col); setPx(19, my + 1, col);
+  } else if (live.mouthCurve < -0.1) {
+    [[13,my+1],[14,my],[15,my],[16,my],[17,my],[18,my+1]].forEach(([x,y]) => setPx(x, y, col));
+  } else {
+    [[12,my-1],[13,my],[14,my+1],[15,my+1],[16,my+1],[17,my+1],[18,my],[19,my-1]].forEach(([x,y]) => setPx(x, y, col));
+  }
+
+  // Render LED matrix dots
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const px = ox + x * cell + cell / 2, py = oy + y * cell + cell / 2;
+      const lit = grid[y][x];
+      ctx.beginPath(); ctx.arc(px, py, cell * 0.38, 0, Math.PI * 2);
+      if (lit) {
+        ctx.fillStyle = lit; ctx.shadowColor = lit; ctx.shadowBlur = cell * 0.65;
+        ctx.fill(); ctx.shadowBlur = 0;
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,0.035)'; ctx.fill();
+      }
+    }
+  }
+}
+
+/* --- Option 6: Minimalist Neon Kaomoji Symbols (^ ‿ ^) --- */
+function drawKaomojiFace(now) {
+  ctx.fillStyle = '#05040a'; ctx.fillRect(0, 0, W, H);
+  const r = Math.min(H * 0.20, W * 0.13);
+  const spacing = Math.min(W * 0.20, r * 2.4);
+  const breathe = Math.sin(now * 0.002) * r * 0.04;
+  const cx = W / 2 + gaze.x * r * 0.35, eyeY = H * 0.44 + breathe + gaze.y * r * 0.25;
+  const b = Math.max(live.closed || 0, blinkAmount());
+  const col = live.love > 0.4 ? '#ff66c4' : '#00f2fe';
+
+  ctx.save();
+  ctx.translate(cx, H * 0.5); ctx.rotate((live.tilt * Math.PI) / 180); ctx.translate(-cx, -H * 0.5);
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = r * 0.28;
+  ctx.lineWidth = Math.max(6, r * 0.12); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  ['L', 'R'].forEach((side) => {
+    const s = side === 'L' ? -1 : 1;
+    const ex = cx + s * spacing;
+    ctx.save(); ctx.translate(ex, eyeY);
+    if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55)) {
+      // Caret ^ arch
+      ctx.beginPath(); ctx.moveTo(-r * 0.55, r * 0.22); ctx.lineTo(0, -r * 0.38); ctx.lineTo(r * 0.55, r * 0.22); ctx.stroke();
+    } else if (b > 0.75) {
+      ctx.beginPath(); ctx.moveTo(-r * 0.55, 0); ctx.lineTo(r * 0.55, 0); ctx.stroke();
+    } else if (live.love > 0.5) {
+      heart(0, r * 0.1, r * 0.85);
+    } else if (live.think > 0.4) {
+      // > < or ─ ─
+      ctx.beginPath(); ctx.moveTo(-r * 0.45 * s, -r * 0.32); ctx.lineTo(r * 0.45 * s, 0); ctx.lineTo(-r * 0.45 * s, r * 0.32); ctx.stroke();
+    } else {
+      const er = r * 0.48 * (live.asym > 0.01 && side === 'R' ? 0.72 : 1);
+      ctx.beginPath(); ctx.arc(0, 0, er, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(gaze.x * er * 0.35, gaze.y * er * 0.35, er * 0.32, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  });
+
+  // Neon hash blush ///
+  if (live.blush > 0.15) {
+    ctx.save(); ctx.strokeStyle = '#ff55a3'; ctx.shadowColor = '#ff55a3'; ctx.lineWidth = Math.max(3, r * 0.045);
+    [-1, 1].forEach((s) => {
+      const bx = cx + s * (spacing + r * 0.55), by = eyeY + r * 0.75;
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath(); ctx.moveTo(bx + i * r * 0.18 + r * 0.08, by - r * 0.14); ctx.lineTo(bx + i * r * 0.18 - r * 0.08, by + r * 0.14); ctx.stroke();
+      }
+    });
+    ctx.restore();
+  }
+
+  // Kaomoji ω or smile mouth
+  const open = live.talk > 0.05 ? (live.mouthOpen + live.talk * 0.9) : (live.mouthOpen > 0.45 ? live.mouthOpen : 0);
+  const my = H * 0.71 + breathe * 0.6;
+  ctx.lineWidth = Math.max(5, r * 0.09);
+  if (open > 0.18) {
+    ctx.beginPath(); ctx.ellipse(cx, my, r * 0.30, r * 0.28 * Math.min(1.3, open), 0, 0, Math.PI * 2); ctx.stroke();
+  } else {
+    const mw = r * 0.48;
+    ctx.beginPath();
+    ctx.arc(cx - mw * 0.5, my - r * 0.05, mw * 0.5, Math.PI - 0.15, 0.06, true);
+    ctx.arc(cx + mw * 0.5, my - r * 0.05, mw * 0.5, Math.PI - 0.06, 0.15, true);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawEye(x, y, r, side, blinkAmt, now) {
+  const s = side === 'L' ? -1 : 1;   // outer direction
+  // Original v1 CURIOUS / THINKING eye perk: left eye perks up, right eye slightly smaller
+  let browTiltY = 0, sideScale = 1;
+  if (live.asym > 0.01) {
+    if (side === 'L') { browTiltY = -r * 0.16 * live.asym; sideScale = 1 + 0.05 * live.asym; }
+    else { browTiltY = r * 0.04 * live.asym; sideScale = 1 - 0.06 * live.asym; }
+  }
+  const pulse = live.love > 0.05 ? 1 + Math.sin(now * 0.009) * 0.04 * live.love : 1;
+  const R = r * (live.eyeScale || 1) * sideScale * pulse;
+
+  ctx.save();
+  ctx.translate(x, y + browTiltY);
+
+  const drawBrow = () => {
+    if (!cfg.brows) return;
+    let by = live.browY, bt = live.browTilt;
+    if (live.asym > 0.01) {
+      by += (side === 'L' ? -0.16 : 0.05) * live.asym;
+      bt += (side === 'L' ? -0.10 : 0.12) * live.asym;
+    }
+    ctx.save();
+    ctx.translate(0, -R * 1.32 + by * R);
+    ctx.rotate(-bt * s * 0.65);
+    ctx.strokeStyle = 'rgba(0,229,255,0.82)'; ctx.lineWidth = Math.max(3, R * 0.068); ctx.lineCap = 'round';
+    ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = R * 0.18 * live.glow;
+    ctx.beginPath(); ctx.moveTo(-R * 0.52, 0); ctx.quadraticCurveTo(0, -live.browCurve * R * 0.42, R * 0.52, 0); ctx.stroke();
+    ctx.restore();
+  };
+
+  // 1. Original v1 HAPPY crescent arc (or right-eye WINK arc)
+  const isHappyCrescent = live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55);
+  if (isHappyCrescent) {
+    drawBrow();
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = Math.max(6, R * 0.13);
+    ctx.lineCap = 'round';
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = R * 0.28 * live.glow;
+    ctx.beginPath();
+    ctx.arc(0, R * 0.15, R * 0.72, Math.PI * 1.15, Math.PI * 1.85, false);
+    ctx.stroke();
+
+    // Original v1 sparkle stars in corners
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = R * 0.15;
+    ctx.beginPath();
+    ctx.arc(R * 0.46, -R * 0.12, Math.max(2.5, R * 0.045), 0, Math.PI * 2);
+    ctx.arc(-R * 0.46, -R * 0.12, Math.max(2.5, R * 0.045), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  // 2. SLEEP or full blink closure: calm glowing sleeping arc
+  const closeAmt = Math.max(live.closed || 0, blinkAmt);
+  if (closeAmt > 0.92) {
+    drawBrow();
+    ctx.strokeStyle = 'rgba(0,229,255,0.75)';
+    ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(4, R * 0.08);
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = R * 0.2 * live.glow;
+    ctx.beginPath();
+    ctx.arc(0, -R * 0.22, R * 0.68, Math.PI * 0.2, Math.PI * 0.8, false);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  // 3. UNCLIPPED v1 Sclera Outer Glowing Ring (100% round 360-degree glow)
+  const circle = new Path2D(); circle.arc(0, 0, R, 0, Math.PI * 2);
+  const outerGrad = ctx.createRadialGradient(0, 0, R * 0.6, 0, 0, R);
+  outerGrad.addColorStop(0, 'rgba(15, 25, 45, 0.96)');
+  outerGrad.addColorStop(0.85, 'rgba(10, 18, 32, 0.98)');
+  outerGrad.addColorStop(1, live.think > 0.3 ? '#3b2a8c' : '#621B6D');
+
+  ctx.save();
+  ctx.fillStyle = outerGrad;
+  ctx.shadowColor = live.think > 0.3 ? '#5e35b1' : '#9c27b0';
+  ctx.shadowBlur = R * 0.26 * live.glow;
+  ctx.fill(circle);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(0, 229, 255, 0.35)';
+  ctx.lineWidth = Math.max(1.5, R * 0.022);
+  ctx.stroke(circle);
+  ctx.restore();
+
+  // 4. Clip to round eyeball (and vertical blink opening during a fast blink)
+  ctx.save();
+  ctx.clip(circle);
+  if (closeAmt > 0.02) {
+    const openH = R * 2 * (1 - closeAmt * 0.96);
+    ctx.beginPath();
+    ctx.rect(-R * 1.1, -openH * 0.5, R * 2.2, openH);
+    ctx.clip();
+  }
+
+  const maxOff = R * 0.38;
+  const px = gaze.x * maxOff, py = gaze.y * maxOff * 0.85;
+  const irisR = R * 0.56;
+  const loveMix = live.love;
+  const iris = ctx.createRadialGradient(px, py, irisR * 0.2, px, py, irisR);
+  iris.addColorStop(0, '#ffffff');
+  iris.addColorStop(0.35, mixColor('#00e5ff', '#ff6fd0', loveMix));
+  iris.addColorStop(0.75, mixColor('#0055ff', '#c2185b', loveMix));
+  iris.addColorStop(1, 'rgba(0, 20, 60, 0.85)');
+
+  ctx.beginPath(); ctx.arc(px, py, irisR, 0, Math.PI * 2);
+  ctx.fillStyle = iris;
+  ctx.shadowColor = mixColor('#00e5ff', '#ff4fa3', loveMix);
+  ctx.shadowBlur = R * 0.28 * live.glow;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Thinking: calm rotating cyan ticks inside the iris (never red)
+  if (live.think > 0.05) {
+    ctx.save(); ctx.translate(px, py); ctx.rotate(now * 0.0028 * (side === 'L' ? 1 : -1));
+    ctx.strokeStyle = `rgba(180, 245, 255, ${0.78 * live.think})`;
+    ctx.lineWidth = Math.max(2, R * 0.03); ctx.lineCap = 'round';
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * irisR * 0.58, Math.sin(a) * irisR * 0.58);
+      ctx.lineTo(Math.cos(a) * irisR * 0.94, Math.sin(a) * irisR * 0.94);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Central Deep Pupil (heart when in love)
+  const pupilR = irisR * live.pupil * (speakingAnim ? 1 + live.talk * 0.08 : 1);
+  ctx.fillStyle = '#060408';
+  if (loveMix > 0.5) heart(px, py + pupilR * 0.1, pupilR * 1.35);
+  else { ctx.beginPath(); ctx.arc(px, py, pupilR, 0, Math.PI * 2); ctx.fill(); }
+
+  // Bionic Specular Light Highlights (v1)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.shadowColor = '#ffffff'; ctx.shadowBlur = R * 0.08;
+  ctx.beginPath(); ctx.arc(px - irisR * 0.32, py - irisR * 0.32, Math.max(2, pupilR * 0.42), 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(px + irisR * 0.28, py + irisR * 0.25, Math.max(1.2, pupilR * 0.22), 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.restore(); // end circle clip
+
+  drawBrow();
+  ctx.restore();
+}
+
+function heart(x, y, s) {
+  ctx.beginPath();
+  ctx.moveTo(x, y + s * 0.35);
+  ctx.bezierCurveTo(x - s * 1.1, y - s * 0.35, x - s * 0.45, y - s * 1.05, x, y - s * 0.45);
+  ctx.bezierCurveTo(x + s * 0.45, y - s * 1.05, x + s * 1.1, y - s * 0.35, x, y + s * 0.35);
+  ctx.fill();
+}
+
+function drawBlush(x, y, rad, a) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+  g.addColorStop(0, `rgba(255,64,129,${a * 0.55})`); g.addColorStop(0.6, `rgba(255,64,129,${a * 0.22})`); g.addColorStop(1, 'rgba(255,64,129,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawMouth(x, y, r, now) {
+  const w = r * 1.25 * (live.mouthW + live.talk * 0.12);
+  const curve = live.mouthCurve;
+  const smirk = live.smirk * r * 0.12;
+  // Opening: expression opening + real voice amplitude
+  const open = Math.min(1.2, live.mouthOpen + live.talk * 0.9);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = '#00e5ff'; ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = r * 0.16 * live.glow;
+  ctx.lineWidth = Math.max(3, r * 0.045); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const lx = -w / 2, rx = w / 2, ly = -smirk * 0.4 - curve * r * 0.05, ry = smirk - curve * r * 0.05;
+  if (open < 0.06) {
+    ctx.beginPath(); ctx.moveTo(lx, ly);
+    ctx.quadraticCurveTo(0, curve * r * 0.32, rx, ry); ctx.stroke();
+  } else {
+    const h = open * r * 0.42;
+    ctx.beginPath(); ctx.moveTo(lx, ly);
+    ctx.quadraticCurveTo(0, curve * r * 0.18 - h * 0.35, rx, ry);    // upper lip
+    ctx.quadraticCurveTo(0, curve * r * 0.32 + h, lx, ly);          // lower lip
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(0,229,255,0.14)'; ctx.fill(); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function mixColor(a, b, t) {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const ch = (p, sh) => (p >> sh) & 255;
+  const m = (sh) => Math.round(lerp(ch(pa, sh), ch(pb, sh), Math.max(0, Math.min(1, t))));
+  return `rgb(${m(16)},${m(8)},${m(0)})`;
+}
+
+/* =============================================================================
+   2. VOICE OUTPUT — neural voice via bridge, Web Audio playback, real lip sync
+   ============================================================================= */
+let audioCtx = null, analyser = null, outGain = null, analyserBuf = null, currentSource = null;
+let speechId = 0, isSpeaking = false, currentReply = '', spokenSoFar = '', lastSpeechEnd = 0;
+const audioBufferCache = new Map();
+
+let micDSPActive = false;
+async function initHardwareNoiseSuppression() {
+  if (micDSPActive) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: { ideal: true },
+        noiseSuppression: { ideal: true },
+        autoGainControl: { ideal: true },
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 48000 }
+      }
+    });
+    micDSPActive = true;
+    window._auraMicStream = stream;
+    log('[AUDIO-DSP] Hardware beamforming noise suppression & acoustic echo cancellation active');
+  } catch (e) {
+    log('[AUDIO-DSP] Note on hardware mic constraints:', e.message);
+  }
+}
+
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser(); analyser.fftSize = 1024;
+    analyserBuf = new Uint8Array(analyser.fftSize);
+    outGain = audioCtx.createGain();
+    outGain.gain.value = 0.80; // slight headroom so mic easily hears user barge-in over speaker
+    analyser.connect(outGain);
+    outGain.connect(audioCtx.destination);
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  initHardwareNoiseSuppression();
+}
+(function meter() {
+  if (analyser && currentSource) {
+    analyser.getByteTimeDomainData(analyserBuf);
+    let sum = 0; for (let i = 0; i < analyserBuf.length; i++) { const v = (analyserBuf[i] - 128) / 128; sum += v * v; }
+    const rms = Math.sqrt(sum / analyserBuf.length);
+    mouthLevel = Math.max(mouthLevel, Math.min(1, rms * 5.8));
+  }
+  requestAnimationFrame(meter);
+})();
+
+const isArabic = (t) => /[\u0600-\u06FF]/.test(t || '');
+
+function splitSentences(text) {
+  const parts = (text.match(/[^.!?؟\n]+[.!?؟]*[\s]*/g) || [text]).map(s => s.trim()).filter(Boolean);
+  const out = [];
+  for (const p of parts) {
+    if (out.length && (p.length < 6 || (out[out.length - 1].length < 14 && out[out.length - 1].length + p.length < 36))) {
+      out[out.length - 1] += ' ' + p;
+    } else {
+      out.push(p);
+    }
+  }
+  if (out.length && out[0].length > 38) {
+    const m = out[0].match(/^([^,،;—]{8,38}[,،;—])\s+(.{8,})$/);
+    if (m) out.splice(0, 1, m[1].trim(), m[2].trim());
+  }
+  return out;
+}
+
+async function decodeBase64Audio(b64) {
+  ensureAudio();
+  const bin = atob(b64);
+  const len = bin.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+  return await audioCtx.decodeAudioData(bytes.buffer);
+}
+
+async function fetchVoice(sentence, signal) {
+  const key = `${cfg.voice}:${sentence}`;
+  if (audioBufferCache.has(key)) return audioBufferCache.get(key);
+  const url = `${bridgeBase()}/api/tts?text=${encodeURIComponent(sentence)}&lang=${isArabic(sentence) ? 'ar' : 'en'}` +
+              (isArabic(sentence) ? '' : `&voice=${encodeURIComponent(cfg.voice)}`);
+  const res = await fetch(url, { headers: TUNNEL_HEADERS, signal });
+  if (!res.ok) throw new Error('tts ' + res.status);
+  const type = res.headers.get('content-type') || '';
+  if (!type.includes('audio')) throw new Error('tts returned ' + type);
+  const buf = await res.arrayBuffer();
+  const decoded = await audioCtx.decodeAudioData(buf);
+  if (audioBufferCache.size < 40) audioBufferCache.set(key, decoded);
+  return decoded;
+}
+
+function prewarmClientAudio() {
+  const phrases = [
+    "Hi! I'm AURA. Welcome to the IEEE RAS MENA Summit at E-JUST!",
+    "It's right there, follow me !!",
+    "Welcome, VIP Guest 1! Your card is verified. Please follow me!",
+    "Welcome! Your card is verified. Please follow me!",
+    "Sorry, this NFC card is not registered. Please try scanning a valid VIP card.",
+    "Oops, I couldn't read your card clearly. Please hold it steady on the reader and try again.",
+    "أهلاً! أنا أورا. نورت قمة IEEE RAS في الجامعة المصرية اليابانية!",
+    "هي هناك على طول، تعالى ورايا !!",
+    "معلش، الكارت ده مش متسجل عندي. جرب تمرر كارت تاني أو راجع مكتب التسجيل.",
+    "أهلاً بحضرتك يا ضيف الشرف 1! تم تأكيد كارتك، اتفضل ورايا!"
+  ];
+  phrases.forEach(p => {
+    const ctrl = new AbortController();
+    fetchVoice(p, ctrl.signal).catch(() => {});
+  });
+}
+
+function playBuffer(buffer) {
+  return new Promise((resolve) => {
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffer; src.connect(analyser);
+    src.onended = () => { if (currentSource === src) currentSource = null; resolve(); };
+    currentSource = src; src.start();
+  });
+}
+
+let activeUtterance = null;
+function speakFallback(text) {
+  return new Promise((resolve) => {
+    if (!('speechSynthesis' in window)) return resolve();
+    try {
+      speechSynthesis.cancel();
+      speechSynthesis.resume();
+    } catch (e) {}
+
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = isArabic(text) ? 'ar-EG' : 'en-US';
+    activeUtterance = u;
+    window._activeUtterance = u;
+
+    const voices = speechSynthesis.getVoices().filter(v => v.lang.startsWith(u.lang.slice(0, 2)));
+    if (voices.length) {
+      u.voice = voices.find(v => /natural|neural|google|salma|ava|online/i.test(v.name)) || voices[0];
+    }
+    u.rate = 1.0;
+    u.pitch = 1.08;
+
+    let done = false;
+    let fakeMeter = null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (fakeMeter) clearInterval(fakeMeter);
+      activeUtterance = null;
+      window._activeUtterance = null;
+      resolve();
+    };
+
+    fakeMeter = setInterval(() => { mouthLevel = 0.25 + Math.random() * 0.55; }, 85);
+    u.onend = finish;
+    u.onerror = finish;
+
+    // Safety watchdog: ensure promise resolves even if mobile browser drops onend
+    const maxDur = Math.max(1600, text.length * 100);
+    setTimeout(finish, maxDur);
+
+    try {
+      speechSynthesis.speak(u);
+    } catch (err) {
+      finish();
+    }
+  });
+}
+
+async function speak(text, emo = 'NEUTRAL', { holdAfter = 2500, firstAudioB64 = null, clauses = null } = {}) {
+  stopSpeaking();
+  const myId = ++speechId;
+  text = (text || '').trim(); if (!text) return;
+  ensureAudio();
+  isSpeaking = true; recTaintedBySpeaker = true; lastInterim = ''; currentReply = text; spokenSoFar = '';
+  updateMicBadge('speaking');
+
+  const ctrl = new AbortController(); speak.ctrl = ctrl;
+  const sentences = (clauses && clauses.length) ? clauses : splitSentences(text);
+
+  // If no bridge is active (e.g. running on GitHub Pages / Vercel without tunnel), speak locally with zero delay
+  const jobs = sentences.map((s, idx) => {
+    if (!hasBridge()) return Promise.resolve(null);
+    if (idx === 0 && firstAudioB64) {
+      return decodeBase64Audio(firstAudioB64).catch(() => fetchVoice(s, ctrl.signal)).catch(() => null);
+    }
+    return fetchVoice(s, ctrl.signal).catch(e => null);
+  });
+
+  for (let i = 0; i < sentences.length; i++) {
+    const buf = await jobs[i];
+    if (myId !== speechId) return; // interrupted
+    if (i === 0) {
+      speakingAnim = true;
+      setEmotion(emo);
+      caption(text, false);
+    }
+    recTaintedBySpeaker = true;
+    if (buf) await playBuffer(buf); else await speakFallback(sentences[i]);
+    if (myId !== speechId) return;
+    spokenSoFar += (spokenSoFar ? ' ' : '') + sentences[i];
+  }
+  speakingAnim = false;
+  lastSpeechEnd = performance.now();
+  if (myId === speechId) {
+    setTimeout(() => { if (myId === speechId && !thinking) setEmotion(baseState); }, holdAfter);
+  }
+  isSpeaking = false;
+  updateMicBadge('listening');
+  scheduleRestart(100);
+}
+
+function stopSpeaking() {
+  speechId++;
+  if (speak.ctrl) { try { speak.ctrl.abort(); } catch (e) {} speak.ctrl = null; }
+  if (currentSource) { try { currentSource.onended = null; currentSource.stop(); } catch (e) {} currentSource = null; }
+  if ('speechSynthesis' in window) try { speechSynthesis.cancel(); } catch (e) {}
+  if (isSpeaking) lastSpeechEnd = performance.now();
+  isSpeaking = false; speakingAnim = false;
+}
+
+let captionFadeTimer = null;
+function caption(text, isUser) {
+  const c = $('caption');
+  if (!text) { c.style.display = 'none'; return; }
+  // Always show user's live speech briefly at bottom so guest sees they are heard; only show AURA text if captions enabled
+  if (!isUser && !cfg.captions) return;
+  c.style.display = 'block';
+  c.innerHTML = isUser ? `<span class="you">🎙️</span> ${escapeHtml(text)}` : escapeHtml(text);
+  clearTimeout(captionFadeTimer);
+  if (isUser && !cfg.captions) {
+    captionFadeTimer = setTimeout(() => { c.style.display = 'none'; }, 2800);
+  }
+}
+function escapeHtml(s) { return s.replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m])); }
+
+/* =============================================================================
+   3. BRAIN — Antigravity bridge (with memory) or OpenRouter
+   ============================================================================= */
+const history = [];   // [{role:'user'|'model', text}]
+let chatCtrl = null, thinking = false, pendingPrompt = '';
+
+const SYSTEM_PROMPT = `You are AURA, the friendly welcome robot of the IEEE RAS Student Branch at E-JUST (Egypt-Japan University of Science and Technology) at the IEEE RAS MENA Summit in New Borg El-Arab City, Alexandria, Egypt. You have a warm, playful young woman's personality. Speak like a real person in a live spoken conversation: 1-2 short sentences, contractions, no lists, no emojis, no markdown. Reply in the guest's language (Egyptian Arabic if they speak Arabic). You can see the guest through your camera. The President of E-JUST is Prof. Ahmed El-Sabbagh (الأستاذ الدكتور أحمد الصباغ). Never invent event details you don't know; suggest the registration desk instead. If asked where the hall is, reply exactly "It's right there, follow me !!" (Arabic: "هي هناك على طول، تعالى ورايا !!") and add [ACTION: ESCORT]. End every reply with one tag [EMOTION: X], X in HAPPY, CURIOUS, SURPRISED, SAD, WINK, LOVE, THINKING, NEUTRAL.`;
+
+function parseReply(raw) {
+  const em = (raw.match(/\[EMOTION:\s*([A-Z_]+)\]/i) || [])[1];
+  const act = (raw.match(/\[ACTION:\s*([A-Z_]+)\]/i) || [])[1];
+  const text = raw.replace(/\[(EMOTION|ACTION):[^\]]*\]/gi, '').replace(/[*_#`]+/g, '').trim();
+  return { text, emotion: (em || 'NEUTRAL').toUpperCase(), action: act ? act.toUpperCase() : null };
+}
+
+const visionSnapCanvas = document.createElement('canvas');
+visionSnapCanvas.width = 320;
+visionSnapCanvas.height = 240;
+const visionSnapCtx = visionSnapCanvas.getContext('2d');
+
+function captureCameraFrameB64() {
+  try {
+    const c = $('cam');
+    if (!c || c.readyState < 2 || !c.videoWidth) return null;
+    visionSnapCtx.drawImage(c, 0, 0, 320, 240);
+    return visionSnapCanvas.toDataURL('image/jpeg', 0.62);
+  } catch (e) {
+    return null;
+  }
+}
+
+async function askBrain(prompt, context) {
+  chatCtrl = new AbortController();
+  const signal = chatCtrl.signal;
+  const timeout = setTimeout(() => chatCtrl && chatCtrl.abort(), 20000);
+  const imgB64 = captureCameraFrameB64();
+  const hwCtx = getHardwareContextString();
+  const fullContext = [hwCtx, context].filter(Boolean).join(' | ');
+  try {
+    if (cfg.provider === 'openrouter' && cfg.orKey) {
+      const userText = fullContext ? `(${fullContext})\n${prompt}` : prompt;
+      const userContent = imgB64
+        ? [{ type: 'text', text: userText }, { type: 'image_url', image_url: { url: imgB64 } }]
+        : userText;
+      const messages = [{ role: 'system', content: SYSTEM_PROMPT },
+        ...history.slice(-12).map(h => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.text })),
+        { role: 'user', content: userContent }];
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST', signal,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.orKey}`, 'HTTP-Referer': location.origin, 'X-Title': 'AURA E-JUST' },
+        body: JSON.stringify({ model: cfg.orModel, messages, temperature: 0.8, max_tokens: 200 }),
+      });
+      if (!res.ok) throw new Error('OpenRouter ' + res.status);
+      const j = await res.json();
+      return parseReply(j.choices?.[0]?.message?.content || '');
+    }
+    if (!hasBridge()) {
+      return getOfflineReply(prompt);
+    }
+    const res = await fetch(`${bridgeBase()}/api/chat`, {
+      method: 'POST', signal,
+      headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS },
+      body: JSON.stringify({ prompt, history: history.slice(-12), context: fullContext || null, voice: cfg.voice, image_b64: imgB64 }),
+    });
+    if (!res.ok) throw new Error('bridge ' + res.status);
+    const j = await res.json();
+    return {
+      text: j.reply,
+      emotion: (j.emotion || 'NEUTRAL').toUpperCase(),
+      action: j.action || null,
+      clauses: j.clauses || null,
+      firstAudioB64: j.first_audio_b64 || null,
+    };
+  } finally { clearTimeout(timeout); }
+}
+
+const HALL_RE = /(where|which way|how (do|can) i (get|go)|take me|show me|direction).{0,30}\b(hall|auditorium|conference room|main room|session|theat(er|re))\b|\b(hall|auditorium)\b.{0,12}\b(where|which way)\b|(فين|أين|اين|وين|ازاي اروح|إزاي أروح|خدني|وديني).{0,20}(القاع[ةه]|قاع[ةه]|المسرح|المدرج)|(القاع[ةه]|قاع[ةه]|المسرح|المدرج).{0,10}(فين|أين|اين|وين)/i;
+const WAVE_RE = /\b(wave|say hi with your hand|move your arm|shake hands)\b|(شاور[يى]?|لوح[يى]? بايدك|حرك[يى]? دراعك|سلم[يى]? بايدك)/i;
+const PAUSE_ESCORT_RE = /\b(stop moving|pause escort|stop robot|wait here|freeze)\b|(وقفي هنا|اقفي مكانك|وقفي المشي|استني هنا|بس متتحركيش)/i;
+const RESUME_ESCORT_RE = /\b(continue moving|resume escort|keep going|go ahead|move now)\b|(يلا كملي|كملي مشي|امشي قدامي|تابعي المشي|يلا بينا)/i;
+
+// --- Directional Voice Driving Commands ---
+const MOVE_FWD_RE = /\b(move forward|go forward|drive forward|step forward|forward)\b|(امشي\s*(ل)?قدام|تحركي\s*(ل)?قدام|اطلعي\s*(ل)?قدام|امشي\s*أمام|أمام|قدام)/i;
+const MOVE_REV_RE = /\b(move backward|back up|go back|reverse|backward)\b|(ارجعي\s*(ل)?ورا|تحركي\s*(ل)?ورا|ارجعي\s*للخلف|للخلف|لورا)/i;
+const TURN_RIGHT_RE = /\b(turn right|spin right|steer right|rotate right)\b|(حودي\s*يمين|لفي\s*يمين|دوري\s*يمين|يمين)/i;
+const TURN_LEFT_RE = /\b(turn left|spin left|steer left|rotate left)\b|(حودي\s*شمال|لفي\s*شمال|دوري\s*شمال|شمال)/i;
+const TURN_AROUND_RE = /\b(turn around|spin around|rotate 180)\b|(لفي\s*ورا|دوري\s*للخلف|لفي\s*180)/i;
+const HARD_STOP_RE = /\b(hard stop|emergency stop|halt|freeze now|brake)\b|(اقفي\s*حالا|فرملي|وقفي\s*حالا|ثبات|فرملة)/i;
+
+function getOfflineReply(text) {
+  const ar = isArabic(text);
+  const t = text.toLowerCase();
+  if (/(who are you|what is your name)|مين إنتي|مين انتي|اسمك إيه|اسمك ايه/i.test(t)) {
+    return {
+      text: ar ? 'أنا أورا، روبوت الاستقبال لفرع IEEE RAS في الجامعة المصرية اليابانية!' : "I'm AURA, the humanoid reception robot of the IEEE RAS Student Branch at E-JUST!",
+      emotion: 'HAPPY', action: null
+    };
+  }
+  if (/(president|who is the head|who runs|el sabbagh|sabbagh|amr adly)|مين رئيس الجامعة|رئيس الجامعة|أحمد الصباغ|احمد الصباغ|الصباغ|عمرو عدلي/i.test(t)) {
+    return {
+      text: ar ? 'رئيس الجامعة المصرية اليابانية هو الأستاذ الدكتور أحمد الصباغ، شرف كبير وجوده معنا اليوم في قمة IEEE RAS!' : "The President of E-JUST is Prof. Ahmed El-Sabbagh. It's an honor to welcome him to the IEEE RAS MENA Summit!",
+      emotion: 'HAPPY', action: null
+    };
+  }
+  if (/(what is ieee|ieee ras|summit|mena)|إيه هو ieee|قمة ieee|يعني إيه ieee/i.test(t)) {
+    return {
+      text: ar ? 'دي قمة IEEE RAS لمنطقة الشرق الأوسط وشمال أفريقيا، بنستعرض فيها أحدث أبحاث الروبوتات والذكاء الاصطناعي!' : 'This is the IEEE RAS MENA Summit, showcasing cutting-edge robotics and AI here at E-JUST!',
+      emotion: 'HAPPY', action: null
+    };
+  }
+  if (/(what can you do|features|abilities)|بتعملي إيه|تقدري تعملي إيه|إيه وظيفتك/i.test(t)) {
+    return {
+      text: ar ? 'أقدر أرحب بضيوف الـ VIP، وأقرأ كروت الـ NFC، وأوصلكم للقاعات عبر تتبع المسار، وأتحرك بأوامر الصوت، وأتكلم معاكم!' : 'I can welcome VIP guests, verify university NFC cards, escort you to summit halls, drive via voice commands, and chat with you!',
+      emotion: 'HAPPY', action: null
+    };
+  }
+  if (/(thank you|thanks|great job|awesome)|شكرا|شكراً|تسلمي|شاطرة|برافو/i.test(t)) {
+    return {
+      text: ar ? 'العفو! تحت أمرك، واستمتع بيومك في قمة IEEE RAS بالجامعة!' : "You're very welcome! Enjoy your time at the IEEE RAS MENA Summit!",
+      emotion: 'LOVE', action: null
+    };
+  }
+  if (/(hello|hi|hey|good morning|welcome)|أهلا|اهلاً|مرحبا|صباح الخير|سلام|ازيك|إزيك/i.test(t)) {
+    return {
+      text: ar ? 'أهلاً بيك! نورت قمة IEEE RAS في الجامعة المصرية اليابانية، أقدر أساعدك في إيه؟' : 'Hi there! Welcome to the IEEE RAS MENA Summit at E-JUST. How can I help you today?',
+      emotion: 'HAPPY', action: null
+    };
+  }
+  if (/(how are you|how do you do)|عاملة إيه|اخبارك|إيه الأخبار/i.test(t)) {
+    return {
+      text: ar ? 'أنا بخير ومتحمسة جدا لقمة الروبوتات اليوم! تحب تروح أي قاعة؟' : "I'm doing fantastic and thrilled for the robotics summit! Would you like directions to any hall?",
+      emotion: 'HAPPY', action: null
+    };
+  }
+  return {
+    text: ar ? 'أهلاً بيك في قمة IEEE RAS بالجامعة المصرية اليابانية! لو محتاج تروح أي قاعة مرر كارتك أو وجهني بصوتك.' : 'Welcome to the IEEE RAS MENA Summit at E-JUST! If you need directions to a hall, scan your card or guide me with your voice.',
+    emotion: 'HAPPY', action: null
+  };
+}
+
+async function handleTurn(userText, context) {
+  userText = userText.trim(); if (!userText) return;
+  log('heard:', userText);
+  caption(userText, true);
+
+  // Language switch by voice (handles both English & phonetic Arabic transcriptions)
+  if (/(speak|talk|switch to|in)\s+arabic|اتكلم[يى]? عرب[يى]|تحدث[يى]? بالعرب|كلمن[يى] عرب[يى]|بالعرب[يى]|نتكلم عرب[يى]/i.test(userText)) {
+    if (cfg.lang !== 'ar-EG') setLang('ar-EG');
+    history.push({ role: 'user', text: userText });
+    const t = 'أكيد! يلا نتكلم عربي. أقدر أساعدك في إيه؟'; history.push({ role: 'model', text: t });
+    return speak(t, 'HAPPY');
+  }
+  if (/(english please|speak english|talk in english|switch to english|سبيك انجلش|انجلش|اتكلم[يى]? انجليز[يى]|بالانجليز[يى])/i.test(userText)) {
+    if (cfg.lang !== 'en-US') setLang('en-US');
+    history.push({ role: 'user', text: userText });
+    const t = "Sure! Let's talk in English. How can I help?"; history.push({ role: 'model', text: t });
+    return speak(t, 'HAPPY');
+  }
+
+  // Trigger physical arm wave on ESP32 when guest asks AURA to wave
+  if (WAVE_RE.test(userText)) {
+    sendBle({ cmd: 'WAVE' });
+  }
+
+  // Voice control for stopping / pausing physical escort
+  if (PAUSE_ESCORT_RE.test(userText)) {
+    sendBle({ cmd: 'PAUSE' });
+    hwState.state = 'PAUSED';
+    updateHwUi();
+    const ar = isArabic(userText);
+    const t = ar ? 'وقفت حالا. قولي أول ما تحب نكمل!' : "Paused escort. Let me know when you'd like to continue!";
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'SURPRISED', { holdAfter: 3000 });
+  }
+
+  // Voice control for resuming physical escort
+  if (RESUME_ESCORT_RE.test(userText)) {
+    sendBle({ cmd: 'RESUME' });
+    hwState.state = 'ESCORTING';
+    updateHwUi();
+    const ar = isArabic(userText);
+    const t = ar ? 'يلا بينا نكمل المشي، تعالى ورايا!' : "Resuming escort, follow me!";
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'HAPPY', { holdAfter: 3500 });
+  }
+
+  // --- Directional Voice Driving (Manual Pulses) ---
+  if (HARD_STOP_RE.test(userText)) {
+    sendBle({ cmd: 'STOP' });
+    hwState.state = 'PAUSED';
+    updateHwUi();
+    const ar = isArabic(userText);
+    const t = ar ? 'وقفت مكاني حالا!' : 'Emergency stop engaged!';
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'SURPRISED', { holdAfter: 2000 });
+  }
+  if (MOVE_FWD_RE.test(userText)) {
+    sendBle({ cmd: 'MOVE_FWD', ms: 1500 });
+    const ar = isArabic(userText);
+    const t = ar ? 'حاضر، بتحرك لقدام!' : 'Moving forward!';
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'HAPPY', { holdAfter: 2000 });
+  }
+  if (MOVE_REV_RE.test(userText)) {
+    sendBle({ cmd: 'MOVE_REV', ms: 1500 });
+    const ar = isArabic(userText);
+    const t = ar ? 'حاضر، برجع لورا!' : 'Backing up!';
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'HAPPY', { holdAfter: 2000 });
+  }
+  if (TURN_RIGHT_RE.test(userText)) {
+    sendBle({ cmd: 'TURN_RIGHT', ms: 650 });
+    const ar = isArabic(userText);
+    const t = ar ? 'حاضر، بحود يمين!' : 'Turning right!';
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'HAPPY', { holdAfter: 1500 });
+  }
+  if (TURN_LEFT_RE.test(userText)) {
+    sendBle({ cmd: 'TURN_LEFT', ms: 650 });
+    const ar = isArabic(userText);
+    const t = ar ? 'حاضر، بحود شمال!' : 'Turning left!';
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'HAPPY', { holdAfter: 1500 });
+  }
+  if (TURN_AROUND_RE.test(userText)) {
+    sendBle({ cmd: 'TURN_RIGHT', ms: 1300 });
+    const ar = isArabic(userText);
+    const t = ar ? 'بلف ورايا حالا!' : 'Turning around!';
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'HAPPY', { holdAfter: 2000 });
+  }
+
+  // Hall escort — instant, no waiting for the AI
+  if (HALL_RE.test(userText)) {
+    const ar = isArabic(userText);
+    const t = ar ? 'هي هناك على طول، تعالى ورايا !!' : "It's right there, follow me !!";
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    const isTheatre = /theat(er|re)|المسرح|المدرج/i.test(userText);
+    sendBle({ cmd: 'START_ESCORT', name: hwState.lastNfcName || 'Guest', dest: isTheatre ? 'E-JUST Grand Theatre' : 'Main Conference Hall', markers: isTheatre ? 2 : 1 });
+    return speak(t, 'HAPPY', { holdAfter: 4000 });
+  }
+
+  history.push({ role: 'user', text: userText });
+  thinking = true;
+  const thinkTimer = setTimeout(() => { if (thinking) setEmotion('THINKING'); }, 350);  // avoid flicker on fast replies
+  try {
+    const r = await askBrain(userText, context);
+    if (!thinking) return;  // superseded by a newer question
+    thinking = false; clearTimeout(thinkTimer);
+    if (!r.text) throw new Error('empty reply');
+    history.push({ role: 'model', text: r.text });
+    if (r.action === 'ESCORT') sendBle({ cmd: 'START_ESCORT', name: 'Guest', dest: 'Main Conference Hall', markers: 1 });
+    log('reply:', r.emotion, r.text);
+    await speak(r.text, r.emotion, { firstAudioB64: r.firstAudioB64, clauses: r.clauses });
+  } catch (e) {
+    clearTimeout(thinkTimer);
+    if (e.name === 'AbortError' && !thinking) return;  // we aborted on purpose (user kept talking)
+    thinking = false;
+    log('cloud brain unavailable, falling back to local offline smart engine:', e.message);
+    const off = getOfflineReply(userText);
+    history.push({ role: 'model', text: off.text });
+    log('offline reply:', off.emotion, off.text);
+    speak(off.text, off.emotion);
+  }
+}
+
+/* =============================================================================
+   4. EARS — single-utterance Android-native recognition (continuous=false),
+      100% immune to speaker self-echo, with keyword & touch barge-in
+   ============================================================================= */
+function updateMicBadge(state, detail = '') {
+  const b = $('micBadge');
+  if (!b) return;
+  b.className = '';
+  if (state === 'blocked') {
+    b.classList.add('blocked');
+    b.textContent = '⚠️ MIC BLOCKED (TAP TO ALLOW)';
+  } else if (state === 'hearing') {
+    b.classList.add('hearing');
+    b.textContent = detail ? `👂 ${detail}` : '👂 HEARING...';
+  } else if (state === 'thinking') {
+    b.classList.add('hearing');
+    b.textContent = '🧠 THINKING...';
+  } else if (state === 'speaking') {
+    b.classList.add('speaking');
+    b.textContent = '🔊 SPEAKING';
+  } else if (state === 'listening') {
+    b.textContent = '🎙️ LISTENING';
+  } else {
+    b.textContent = '🎙️ TAP TO WAKE';
+  }
+}
+
+function updateLangBadge() {
+  const l = $('langBadge');
+  if (!l) return;
+  l.textContent = (cfg.lang === 'ar-EG') ? '🌐 عربي' : '🌐 EN';
+}
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recRunning = false, awake = false, restartListenTimer = null, interruptedContext = null;
+let lastInterim = '', recTaintedBySpeaker = false;
+
+// Explicit barge-in words that can interrupt AURA while her speaker is playing
+const STRICT_BARGE_RE = /\b(stop|wait|hold on|hey aura|aura|excuse me|pause|enough|quiet)\b|(استن[ىي]|ثاني[ةه]|بس|كفاي[ةه]|وقفي|اسكتي|يا اورا|يا أورا)/i;
+
+function normWord(w) { return (w || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''); }
+function words(t) { return (t || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length > 1); }
+
+function scheduleRestart(delay = 90) {
+  clearTimeout(restartListenTimer);
+  restartListenTimer = setTimeout(() => {
+    if (awake && !recRunning) startRec();
+  }, delay);
+}
+
+function bargeIn() {
+  if (!isSpeaking && !thinking) return;
+  log('barge-in');
+  if (isSpeaking) {
+    const said = spokenSoFar || '';
+    interruptedContext = said ? `You were interrupted. You had only said: "${said}"` : 'You were interrupted before you could answer.';
+    if (history.length && history[history.length - 1].role === 'model') history[history.length - 1].text = (said || '…') + ' —';
+    stopSpeaking();
+  }
+  if (thinking) {
+    thinking = false;
+    try { chatCtrl && chatCtrl.abort(); } catch (e) {}
+  }
+  lastInterim = '';
+  recTaintedBySpeaker = true;
+  if (rec && recRunning) { try { rec.abort(); } catch (e) {} }
+  setEmotion('LISTENING', 4500);
+  scheduleRestart(220);
+}
+
+function commitUserUtterance(text) {
+  text = (text || '').trim();
+  lastInterim = '';
+  if (!text) return;
+  // Double-safety: never commit an utterance while AURA is speaking or within 500ms of speaker stop
+  if (isSpeaking || (performance.now() - lastSpeechEnd < 500)) return;
+  if (thinking) {
+    thinking = false;
+    try { chatCtrl && chatCtrl.abort(); } catch (e) {}
+    const prev = history.length && history[history.length - 1].role === 'user' ? history.pop().text : '';
+    text = (prev ? prev + ' ' : '') + text;
+  }
+  const ctxNote = interruptedContext;
+  interruptedContext = null;
+  handleTurn(text, ctxNote);
+}
+
+function isDirectVoiceCommand(text) {
+  if (!text) return false;
+  return HARD_STOP_RE.test(text) ||
+         PAUSE_ESCORT_RE.test(text) ||
+         RESUME_ESCORT_RE.test(text) ||
+         MOVE_FWD_RE.test(text) ||
+         MOVE_REV_RE.test(text) ||
+         TURN_RIGHT_RE.test(text) ||
+         TURN_LEFT_RE.test(text) ||
+         TURN_AROUND_RE.test(text) ||
+         HALL_RE.test(text);
+}
+
+let interimCommitTimer = null;
+
+function initRecognition() {
+  if (!SR) { notice('Speech recognition is not supported here. Use Chrome on Android.', 0); return; }
+  if (rec) { try { rec.abort(); } catch (e) {} }
+  rec = new SR();
+  // continuous=false is the battle-tested Android Chrome mode (prevents cumulative duplication & hung sessions)
+  rec.continuous = false;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  rec.lang = cfg.lang;
+
+    rec.onstart = () => {
+    recRunning = true;
+    lastInterim = '';
+    clearTimeout(interimCommitTimer);
+    recTaintedBySpeaker = isSpeaking || (performance.now() - lastSpeechEnd < 450);
+    if (!isSpeaking) updateMicBadge('listening');
+  };
+
+  rec.onresult = (ev) => {
+    let interim = '', final = '';
+    for (let i = ev.resultIndex; i < ev.results.length; ++i) {
+      if (ev.results[i].isFinal) {
+        final += ev.results[i][0].transcript;
+      } else {
+        interim += ev.results[i][0].transcript;
+      }
+    }
+    const rawHeard = (final || interim).trim();
+    if (!rawHeard) return;
+
+    // If AURA is speaking or this recognition session started while her speaker was active:
+    // ONLY allow explicit barge-in keywords (stop, wait, hey aura, استنى, بس, etc.) and NEVER send speaker audio to chat!
+    if (isSpeaking || recTaintedBySpeaker || (performance.now() - lastSpeechEnd < 650)) {
+      recTaintedBySpeaker = true;
+      lastInterim = '';
+      clearTimeout(interimCommitTimer);
+      if (STRICT_BARGE_RE.test(rawHeard)) {
+        bargeIn();
+      }
+      return;
+    }
+
+    if (emotion !== 'THINKING') {
+      setEmotion('LISTENING', 4000);
+    }
+
+    // --- TIER 1: INSTANT COMMAND FAST-PATH (Zero Lag) ---
+    // If a motion or stop command is detected in interim speech, execute IMMEDIATELY without waiting for silence!
+    if (isDirectVoiceCommand(rawHeard)) {
+      clearTimeout(interimCommitTimer);
+      lastInterim = '';
+      try { rec.abort(); } catch (e) {}
+      caption(rawHeard, true);
+      commitUserUtterance(rawHeard);
+      return;
+    }
+
+    // --- TIER 2: FINAL RESULT COMMIT ---
+    if (final.trim()) {
+      clearTimeout(interimCommitTimer);
+      const cleanFinal = final.trim();
+      lastInterim = '';
+      caption(cleanFinal, true);
+      commitUserUtterance(cleanFinal);
+      return;
+    }
+
+    // --- TIER 3: ADAPTIVE NOISE INTERIM COMMITTER ---
+    // In noisy halls, Google's cloud STT hangs for 4-8 seconds waiting for silence.
+    // If interim speech remains unchanged for 650ms, the user has finished speaking!
+    lastInterim = interim.trim();
+    caption(lastInterim + ' …', true);
+    updateMicBadge('hearing', lastInterim.slice(0, 22));
+
+    clearTimeout(interimCommitTimer);
+    if (lastInterim && lastInterim.length >= 3) {
+      interimCommitTimer = setTimeout(() => {
+        if (!isSpeaking && !recTaintedBySpeaker && (performance.now() - lastSpeechEnd >= 650) && lastInterim && lastInterim.trim().length >= 3) {
+          log('[NOISE-ADAPTIVE] Fast-committing stable speech in noisy hall:', lastInterim);
+          const toSend = lastInterim.trim();
+          lastInterim = '';
+          try { rec.abort(); } catch (e) {}
+          caption(toSend, true);
+          commitUserUtterance(toSend);
+        }
+      }, 650);
+    }
+  };
+
+    rec.onerror = (e) => {
+    recRunning = false;
+    lastInterim = '';
+    clearTimeout(interimCommitTimer);
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      notice('Microphone blocked. Tap the mic button above to allow access.', 0);
+      updateMicBadge('blocked');
+      awake = false;
+      setEmotion('SAD');
+    } else {
+      if (e.error !== 'no-speech' && e.error !== 'aborted') log('rec notice:', e.error);
+      if (!isSpeaking) updateMicBadge('listening');
+      scheduleRestart(100);
+    }
+  };
+
+  rec.onend = () => {
+    recRunning = false;
+    clearTimeout(interimCommitTimer);
+    // Only commit leftover interim speech if the session was 100% untainted by AURA's speaker
+    if (!recTaintedBySpeaker && !isSpeaking && (performance.now() - lastSpeechEnd >= 650) && lastInterim && lastInterim.trim().length >= 2) {
+      const toSend = lastInterim.trim();
+      lastInterim = '';
+      caption(toSend, true);
+      commitUserUtterance(toSend);
+    }
+    lastInterim = '';
+    if (awake && !isSpeaking) scheduleRestart(100);
+    else if (awake && isSpeaking) scheduleRestart(250);
+  };
+}
+
+function startRec() {
+  if (recRunning || !awake) return;
+  if (!rec) initRecognition();
+  if (!rec) return;
+  try {
+    rec.lang = cfg.lang;
+    rec.start();
+    recRunning = true;
+  } catch (e) {
+    recRunning = false;
+    if (e.name !== 'InvalidStateError') {
+      scheduleRestart(220);
+    }
+  }
+}
+
+function setLang(l) { cfg.lang = l; store.set('lang', l); if (rec) { try { rec.abort(); } catch (e) {} } }
+setInterval(() => { if (awake && !recRunning) startRec(); }, 1800);   // watchdog: never stay deaf
+
+/* =============================================================================
+   5. EYES — camera face tracking (MediaPipe, with a motion/skin fallback)
+   ============================================================================= */
+const cam = $('cam');
+let detector = null, fallbackPrev = null, faceSince = 0, faceLostAt = 0, lastGreet = 0, visitorPresent = false;
+const prevCanvas = $('camPreview'), pctx = prevCanvas.getContext('2d');
+const small = document.createElement('canvas'); small.width = 64; small.height = 48;
+const sctx = small.getContext('2d', { willReadFrequently: true });
+
+let camViewActive = false;
+let currentFacingMode = 'user';
+let activeVideoStream = null;
+
+async function startCameraStream(facingMode = 'user') {
+  currentFacingMode = facingMode;
+  if (activeVideoStream) {
+    try { activeVideoStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
+    activeVideoStream = stream;
+    cam.srcObject = stream;
+    try { cam.play().catch(() => {}); } catch (e) {}
+    const full = $('fullCamVideo');
+    if (full) {
+      full.srcObject = stream;
+      full.style.transform = (facingMode === 'user') ? 'scaleX(-1)' : 'none';
+      if (camViewActive) {
+        try { full.play().catch(() => {}); } catch (e) {}
+      }
+    }
+    log('camera stream on:', facingMode);
+  } catch (e) {
+    log('camera stream notice:', e.message);
+  }
+}
+
+async function openCameraFullscreen() {
+  ensureAudio();
+  $('camView').style.display = 'block';
+  camViewActive = true;
+  try {
+    if (document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+    }
+  } catch (e) {}
+  resizeCamHud();
+  if (!activeVideoStream) {
+    await startCameraStream(currentFacingMode);
+  }
+  const full = $('fullCamVideo');
+  if (full) {
+    try { full.play().catch(() => {}); } catch (e) {}
+  }
+}
+
+function closeCameraFullscreen() {
+  $('camView').style.display = 'none';
+  camViewActive = false;
+  try {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
+  } catch (e) {}
+}
+
+const camHud = $('camHudCanvas');
+const camCtx = camHud ? camHud.getContext('2d') : null;
+function resizeCamHud() {
+  if (!camHud) return;
+  camHud.width = window.innerWidth;
+  camHud.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCamHud);
+
+async function initCamera() {
+  await startCameraStream(currentFacingMode);
+  try {
+    const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+    const files = await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    detector = await vision.FaceDetector.createFromOptions(files, {
+      baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite', delegate: 'GPU' },
+      runningMode: 'VIDEO', minDetectionConfidence: 0.5,
+    });
+    log('face detector ready (MediaPipe)');
+  } catch (e) { log('MediaPipe unavailable, using motion tracker:', e.message); }
+  trackLoop();
+}
+
+function detectFallback() {
+  // Skin-tone + motion blob centroid on a 64x48 thumbnail
+  sctx.drawImage(cam, 0, 0, 64, 48);
+  const d = sctx.getImageData(0, 0, 64, 48).data;
+  let sx = 0, sy = 0, n = 0;
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    const cb = 128 - 0.169 * r - 0.331 * g + 0.5 * b, cr = 128 + 0.5 * r - 0.419 * g - 0.081 * b;
+    const skin = cr > 135 && cr < 175 && cb > 85 && cb < 135 && r > 60;
+    const moved = fallbackPrev ? Math.abs(r - fallbackPrev[i]) + Math.abs(g - fallbackPrev[i + 1]) > 40 : false;
+    if (skin && (moved || n < 400)) { sx += p % 64; sy += (p / 64) | 0; n++; }
+  }
+  fallbackPrev = d.slice();
+  if (n < 60) return null;
+  return { cx: sx / n / 64, cy: sy / n / 48, size: Math.sqrt(n / (64 * 48)) };
+}
+
+let lastTrack = 0;
+function trackLoop(now = performance.now()) {
+  requestAnimationFrame(trackLoop);
+  if (now - lastTrack < 66 || cam.readyState < 2) return;   // ~15 fps is plenty and saves battery
+  lastTrack = now;
+  let f = null;
+  try {
+    if (detector) {
+      const res = detector.detectForVideo(cam, now);
+      if (res.detections && res.detections.length) {
+        // pick the biggest (closest) face
+        const best = res.detections.map(d => d.boundingBox).sort((a, b) => b.width * b.height - a.width * a.height)[0];
+        f = { cx: (best.originX + best.width / 2) / cam.videoWidth, cy: (best.originY + best.height / 2) / cam.videoHeight, size: best.width / cam.videoWidth };
+      }
+    } else f = detectFallback();
+  } catch (e) { /* skip frame */ }
+
+    if (cfg.camPrev) {
+    prevCanvas.style.display = 'block';
+    pctx.drawImage(cam, 0, 0, 160, 120);
+    if (f) { pctx.strokeStyle = '#00e5ff'; pctx.lineWidth = 2; const s = f.size * 160; pctx.strokeRect(f.cx * 160 - s / 2, f.cy * 120 - s / 2, s, s); }
+  } else prevCanvas.style.display = 'none';
+
+  // Render Fullscreen Camera HUD Overlay
+  if (camViewActive && camCtx && camHud) {
+    const w = camHud.width, h = camHud.height;
+    camCtx.clearRect(0, 0, w, h);
+
+    // Center crosshairs
+    camCtx.strokeStyle = 'rgba(0, 229, 255, 0.25)';
+    camCtx.lineWidth = 1;
+    camCtx.beginPath();
+    camCtx.moveTo(w / 2 - 35, h / 2); camCtx.lineTo(w / 2 + 35, h / 2);
+    camCtx.moveTo(w / 2, h / 2 - 35); camCtx.lineTo(w / 2, h / 2 + 35);
+    camCtx.stroke();
+
+    if (f) {
+      const boxW = f.size * w * 1.25;
+      const boxH = boxW * 1.25;
+      const boxX = (currentFacingMode === 'user') ? (1 - f.cx) * w - boxW / 2 : f.cx * w - boxW / 2;
+      const boxY = f.cy * h - boxH / 2;
+
+      // Draw neon corner brackets
+      camCtx.strokeStyle = '#00e5ff';
+      camCtx.lineWidth = 2.5;
+      const len = Math.min(22, boxW * 0.25);
+
+      // Top-left
+      camCtx.beginPath(); camCtx.moveTo(boxX, boxY + len); camCtx.lineTo(boxX, boxY); camCtx.lineTo(boxX + len, boxY); camCtx.stroke();
+      // Top-right
+      camCtx.beginPath(); camCtx.moveTo(boxX + boxW - len, boxY); camCtx.lineTo(boxX + boxW); camCtx.lineTo(boxX + boxW, boxY + len); camCtx.stroke();
+      // Bottom-left
+      camCtx.beginPath(); camCtx.moveTo(boxX, boxY + boxH - len); camCtx.lineTo(boxX, boxY + boxH); camCtx.lineTo(boxX + len, boxY + boxH); camCtx.stroke();
+      // Bottom-right
+      camCtx.beginPath(); camCtx.moveTo(boxX + boxW - len, boxY + boxH); camCtx.lineTo(boxX + boxW); camCtx.lineTo(boxX + boxW - len, boxY + boxH); camCtx.stroke();
+
+      // Label
+      camCtx.font = '11px ui-monospace, Consolas, monospace';
+      camCtx.fillStyle = '#00e5ff';
+      camCtx.fillText(`TARGET LOCKED: GUEST [X:${Math.round(f.cx * 100)}% Y:${Math.round(f.cy * 100)}%]`, boxX, boxY - 8);
+
+      const tInfo = $('camTargetInfo');
+      if (tInfo) tInfo.textContent = 'TARGET: TRACKED';
+    } else {
+      const tInfo = $('camTargetInfo');
+      if (tInfo) tInfo.textContent = 'TARGET: SCANNING';
+    }
+  }
+
+  if (f) {
+    // Raw front-camera frames are NOT mirrored: a visitor on the screen's right appears on the image's left.
+    gaze.faceSeen = true;
+    gaze.tx = Math.max(-1, Math.min(1, -(f.cx - 0.5) * 2.2));
+    gaze.ty = Math.max(-1, Math.min(1, (f.cy - 0.45) * 2.0));
+    if (!faceSince) faceSince = now;
+    faceLostAt = 0;
+    const close = f.size > 0.16;
+    if (close && now - faceSince > 900 && !visitorPresent) {
+      visitorPresent = true;
+      if (awake && !isSpeaking && !thinking && now - lastGreet > 45000 && now - lastSpeechEnd > 8000) {
+        lastGreet = now;
+        const t = cfg.lang === 'ar-EG' ? 'أهلاً بيك! نورت قمة IEEE RAS. أقدر أساعدك في إيه؟' : "Hi there! Welcome to the IEEE RAS MENA Summit. How can I help you?";
+        history.push({ role: 'model', text: t });
+        speak(t, 'HAPPY');
+      }
+    }
+  } else {
+    gaze.faceSeen = false; faceSince = 0;
+    if (!faceLostAt) faceLostAt = now;
+    if (visitorPresent && now - faceLostAt > 10000) {
+      visitorPresent = false;
+      if (!isSpeaking && !thinking) { history.length = 0; log('visitor left — memory cleared'); }
+    }
+  }
+}
+
+/* =============================================================================
+   6. BODY — ESP32 over Web Bluetooth (Nordic UART, 20-byte chunks, JSON lines)
+      + NFC VIP Card Registry, Learn Mode, IR & Ultrasonic Sensor Telemetry
+   ============================================================================= */
+const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';   // phone -> ESP32
+const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';   // ESP32 -> phone
+let bleDev = null, bleRx = null, bleBuf = '', nfcLearnMode = false, nfcBannerTimer = null;
+
+// Built-in + Custom Learned VIP NFC Cards (Clean Numbering: VIP Guest 1 .. 21, No Hardcoded Destinations)
+const DEFAULT_VIP_CARDS = {
+  '53B80572420001': { name: 'VIP Guest 1',  arName: 'ضيف الشرف 1' },
+  '53B90572420001': { name: 'VIP Guest 2',  arName: 'ضيف الشرف 2' },
+  '53BA0572420001': { name: 'VIP Guest 3',  arName: 'ضيف الشرف 3' },
+  '53BB0572420001': { name: 'VIP Guest 4',  arName: 'ضيف الشرف 4' },
+  '53C00572420001': { name: 'VIP Guest 5',  arName: 'ضيف الشرف 5' },
+  '53C10572420001': { name: 'VIP Guest 6',  arName: 'ضيف الشرف 6' },
+  '53C20572420001': { name: 'VIP Guest 7',  arName: 'ضيف الشرف 7' },
+  '53C30572420001': { name: 'VIP Guest 8',  arName: 'ضيف الشرف 8' },
+  '53C80572420001': { name: 'VIP Guest 9',  arName: 'ضيف الشرف 9' },
+  '53C90572420001': { name: 'VIP Guest 10', arName: 'ضيف الشرف 10' },
+  '53CA0572420001': { name: 'VIP Guest 11', arName: 'ضيف الشرف 11' },
+  '53CB0572420001': { name: 'VIP Guest 12', arName: 'ضيف الشرف 12' },
+  '53D00572420001': { name: 'VIP Guest 13', arName: 'ضيف الشرف 13' },
+  '53D10572420001': { name: 'VIP Guest 14', arName: 'ضيف الشرف 14' },
+  '53D20572420001': { name: 'VIP Guest 15', arName: 'ضيف الشرف 15' },
+  '53D30572420001': { name: 'VIP Guest 16', arName: 'ضيف الشرف 16' },
+  '53D80572420001': { name: 'VIP Guest 17', arName: 'ضيف الشرف 17' },
+  '53D90572420001': { name: 'VIP Guest 18', arName: 'ضيف الشرف 18' },
+  '53DA0572420001': { name: 'VIP Guest 19', arName: 'ضيف الشرف 19' },
+  '53DB0572420001': { name: 'VIP Guest 20', arName: 'ضيف الشرف 20' },
+  '53E00572420001': { name: 'VIP Guest 21', arName: 'ضيف الشرف 21' },
+  // Legacy simulation test UID
+  'A1:B2:C3:D4':   { name: 'VIP Guest 1',  arName: 'ضيف الشرف 1' }
+};
+let vipCards = { ...DEFAULT_VIP_CARDS };
+try {
+  const savedCards = JSON.parse(store.get('vip_cards_v1', '{}'));
+  if (savedCards && typeof savedCards === 'object') vipCards = { ...DEFAULT_VIP_CARDS, ...savedCards };
+} catch (e) {}
+
+function findVipCard(uid) {
+  if (!uid) return null;
+  const clean = uid.replace(/[^A-Fa-f0-9]/g, '').toUpperCase();
+  if (vipCards[clean]) return vipCards[clean];
+  if (vipCards[uid]) return vipCards[uid];
+  for (const [k, v] of Object.entries(vipCards)) {
+    if (k.replace(/[^A-Fa-f0-9]/g, '').toUpperCase() === clean) return v;
+  }
+  return null;
+}
+
+const hwState = {
+  connected: false,
+  deviceName: '',
+  state: 'IDLE',
+  dist: null,
+  ir: '-----',
+  markers: 0,
+  lastNfcUid: 'NONE',
+  lastNfcValid: null,
+  lastNfcName: '',
+  lastNfcDest: '',
+  lastNfcTime: 0,
+  allowAnyNfc: store.get('allow_any_nfc', '0') === '1'
+};
+
+function getHardwareContextString() {
+  const parts = [];
+  if (hwState.connected) {
+    parts.push(`ESP32 Robot Body: CONNECTED (State: ${hwState.state}, Ultrasonic: ${hwState.dist ?? '--'}cm, IR Line: ${hwState.ir}, Markers: ${hwState.markers})`);
+  }
+  if (hwState.lastNfcUid !== 'NONE' && (Date.now() - hwState.lastNfcTime < 180000)) {
+    if (hwState.lastNfcValid) {
+      parts.push(`Last NFC Card Scanned: VALID VIP Card (UID ${hwState.lastNfcUid}) for "${hwState.lastNfcName}", Destination: "${hwState.lastNfcDest}"`);
+    } else {
+      parts.push(`Last NFC Card Scanned: INVALID / UNREGISTERED Card (UID ${hwState.lastNfcUid}) — guest needs to try a valid card or visit registration`);
+    }
+  }
+  return parts.join('; ');
+}
+
+function updateHwUi() {
+  const badge = $('bleBadge');
+  if (badge) {
+    if (hwState.connected) {
+      badge.className = 'connected';
+      badge.textContent = `● ESP32: ${hwState.state}${hwState.dist && hwState.dist < 100 ? ' (' + hwState.dist + 'cm)' : ''}`;
+    } else {
+      badge.className = '';
+      badge.textContent = '● BLE: TAP TO PAIR';
+    }
+  }
+  const box = $('hwTelemetry');
+  if (box) {
+    box.textContent = `BLE: ${hwState.connected ? 'CONNECTED (' + (hwState.deviceName || 'ESP32') + ')' : 'Disconnected'} | State: ${hwState.state} | Ultrasonic: ${hwState.dist ?? '--'} cm | IR(5ch): ${hwState.ir} | Markers: ${hwState.markers} | Last NFC: ${hwState.lastNfcUid} (${hwState.lastNfcValid === true ? 'VALID: ' + hwState.lastNfcName : hwState.lastNfcValid === false ? 'INVALID' : '--'})`;
+  }
+  const listEl = $('nfcListBox');
+  if (listEl) {
+    const lines = Object.entries(vipCards).map(([uid, info]) => `✓ ${uid}  →  ${info.name} (${info.dest}, ${info.markers} mkr)`);
+    listEl.textContent = `Registered Valid VIP Cards (${lines.length}):\n` + lines.join('\n');
+  }
+}
+
+function showNfcBanner(msg, type = 'valid', ms = 5500) {
+  const b = $('nfcBanner');
+  if (!b) return;
+  b.className = type;
+  b.textContent = msg;
+  b.style.display = 'block';
+  clearTimeout(nfcBannerTimer);
+  nfcBannerTimer = setTimeout(() => { b.style.display = 'none'; }, ms);
+}
+
+function animateHeadShake() {
+  // Subtle horizontal gaze shake when an NFC card is invalid
+  const seq = [-0.65, 0.65, -0.45, 0.45, 0];
+  seq.forEach((val, idx) => {
+    setTimeout(() => { gaze.tx = val; }, idx * 150);
+  });
+}
+
+async function connectBle() {
+  if (!navigator.bluetooth) {
+    notice('Web Bluetooth requires Chrome on Android or Desktop over HTTPS.', 5000);
+    log('Web Bluetooth not available (needs Chrome + HTTPS)');
+    return;
+  }
+  try {
+    const dev = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [NUS] }, { namePrefix: 'AURA' }, { namePrefix: 'ESP32' }, { namePrefix: 'IEEE' }],
+      optionalServices: [NUS]
+    });
+    bleDev = dev;
+    dev.addEventListener('gattserverdisconnected', () => {
+      bleRx = null;
+      hwState.connected = false;
+      updateHwUi();
+      log('ESP32 disconnected — will attempt auto-reconnect...');
+      setTimeout(tryReconnectBle, 1500);
+    });
+    await attachBleGatt(dev);
+  } catch (e) { log('BLE error:', e.message); }
+}
+
+async function tryReconnectBle() {
+  if (!bleDev || hwState.connected) return;
+  try {
+    await attachBleGatt(bleDev);
+  } catch (e) {
+    log('BLE auto-reconnect failed:', e.message);
+  }
+}
+
+async function attachBleGatt(dev) {
+  const server = await dev.gatt.connect();
+  const svc = await server.getPrimaryService(NUS);
+  bleRx = await svc.getCharacteristic(NUS_RX);
+  const tx = await svc.getCharacteristic(NUS_TX);
+  await tx.startNotifications();
+  tx.addEventListener('characteristicvaluechanged', (ev) => {
+    bleBuf += new TextDecoder().decode(ev.target.value);
+    const lines = bleBuf.split('\n'); bleBuf = lines.pop();
+    lines.map(l => l.trim()).filter(Boolean).forEach(onEsp32);
+  });
+  hwState.connected = true;
+  hwState.deviceName = dev.name || 'AURA-EJUST-BOT';
+  updateHwUi();
+  showNfcBanner(`🔗 Connected to ${hwState.deviceName}`, 'valid', 3500);
+  log('ESP32 connected:', dev.name);
+  await sendBle({ cmd: 'HELLO', client: 'AURA_SCREEN_APP' });
+  if (hwState.allowAnyNfc) await sendBle({ cmd: 'ALLOW_ANY_NFC', allow: true });
+}
+
+async function sendBle(obj) {
+  log('BLE ->', obj);
+  if (!bleRx) return;
+  const data = new TextEncoder().encode(JSON.stringify(obj) + '\n');
+  try {
+    for (let i = 0; i < data.length; i += 20) {
+      const chunk = data.slice(i, i + 20);
+      if (bleRx.writeValueWithoutResponse) await bleRx.writeValueWithoutResponse(chunk); else await bleRx.writeValue(chunk);
+      await new Promise(r => setTimeout(r, 15));
+    }
+  } catch (e) { log('BLE write error:', e.message); }
+}
+
+function registerCardUid(uid, name, dest, markers = 1) {
+  uid = (uid || '').trim().toUpperCase();
+  if (!uid || uid === 'NONE' || uid === 'READ_ERROR') return;
+  name = (name || 'Honored VIP Guest').trim();
+  dest = (dest || 'Main Conference Hall').trim();
+  vipCards[uid] = {
+    name,
+    arName: name,
+    dest,
+    arDest: dest.includes('Theatre') ? 'المسرح الكبير' : dest.includes('Lab') ? 'معمل الروبوتات والقاعة' : 'قاعة المؤتمرات الرئيسية',
+    markers: Number(markers) || 1
+  };
+  store.set('vip_cards_v1', JSON.stringify(vipCards));
+  updateHwUi();
+  log('Registered NFC UID:', uid, '->', name, dest);
+}
+
+let lastObstacleSpeech = 0;
+function onEsp32(raw) {
+  log('BLE <-', raw);
+  let d; try { d = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (e) { return; }
+  const ar = cfg.lang === 'ar-EG';
+
+  if (d.event === 'STATUS') {
+    if (d.state) hwState.state = d.state;
+    if (typeof d.dist === 'number') hwState.dist = d.dist;
+    if (d.ir) hwState.ir = d.ir;
+    if (typeof d.markers === 'number') hwState.markers = d.markers;
+    updateHwUi();
+    return;
+  }
+
+  if (d.event === 'NFC_TAP') {
+    const uid = (d.uid || 'UNKNOWN').toUpperCase();
+    hwState.lastNfcUid = uid;
+    hwState.lastNfcTime = Date.now();
+
+    // 1. Check if NFC Learn Mode is active (user tapped "Scan Next Card to Register")
+    if (nfcLearnMode && uid !== 'READ_ERROR') {
+      nfcLearnMode = false;
+      const learnBtn = $('bLearnNfc');
+      if (learnBtn) learnBtn.textContent = 'Scan Next Card to Register';
+      const newName = ($('sNewCardName') && $('sNewCardName').value.trim()) || 'VIP Guest';
+      const destParts = (($('sNewCardDest') && $('sNewCardDest').value) || 'Main Conference Hall|1').split('|');
+      registerCardUid(uid, newName, destParts[0], parseInt(destParts[1] || '1', 10));
+      showNfcBanner(`✅ Registered Card ${uid} → ${newName}`, 'valid', 5500);
+    }
+
+    // 2. Handle physical NFC Read Error (card pulled away too fast)
+    if (uid === 'READ_ERROR' || d.reason === 'READ_ERROR') {
+      hwState.lastNfcValid = false;
+      hwState.lastNfcName = '';
+      updateHwUi();
+      setEmotion('SAD', 3500);
+      showNfcBanner('⚠️ Card Read Error — Hold card steady & try again', 'invalid', 5000);
+      animateHeadShake();
+      const t = ar
+        ? 'معلش، مقدرتش أقرأ الكارت كويس. ثبته ثانية على القارئ وجرب تاني.'
+        : "Oops, I couldn't read your card clearly. Please hold it steady on the reader and try again.";
+      history.push({ role: 'user', text: `[NFC Scanner: Card Read Error]` }, { role: 'model', text: t });
+      speak(t, 'SAD');
+      return;
+    }
+
+    // 3. Determine if card is VALID (matched in WebApp vipCards, ESP32 valid:true, or allowAnyNfc)
+    const localCard = findVipCard(uid);
+    const isValid = Boolean(localCard || d.valid === true || hwState.allowAnyNfc);
+
+    if (isValid) {
+      const guestName = (localCard && localCard.name) || d.name || ('VIP Guest ' + (d.id || ''));
+      const guestArName = (localCard && localCard.arName) || guestName;
+
+      hwState.lastNfcValid = true;
+      hwState.lastNfcName = guestName;
+      hwState.state = 'WELCOME';
+      updateHwUi();
+      setEmotion('LOVE', 4500);
+
+      // If ESP32 reported valid:false because this card was registered dynamically on the phone, command ESP32 to start escort!
+      if (d.valid === false) {
+        sendBle({ cmd: 'START_ESCORT', uid, name: guestName });
+      }
+
+      showNfcBanner(`✅ NFC VERIFIED: ${guestName}`, 'valid', 5000);
+      const t = ar
+        ? `أهلاً بحضرتك يا ${guestArName}! تم تأكيد كارتك، اتفضل ورايا!`
+        : `Welcome, ${guestName}! Your card is verified. Please follow me!`;
+      history.push({ role: 'user', text: `[NFC Card Scanned — VALID: ${guestName} (${uid})]` }, { role: 'model', text: t });
+      speak(t, 'LOVE', { holdAfter: 3500 });
+    } else {
+      // 4. Card is INVALID / UNREGISTERED
+      hwState.lastNfcValid = false;
+      hwState.lastNfcName = '';
+      hwState.lastNfcDest = '';
+      updateHwUi();
+      setEmotion('SAD', 3500);
+
+      showNfcBanner(`❌ INVALID NFC CARD (${uid}) — Please try again`, 'invalid', 5500);
+      animateHeadShake();
+      const t = ar
+        ? 'معلش، الكارت ده مش متسجل عندي. جرب تمرر كارت تاني أو راجع مكتب التسجيل.'
+        : 'Sorry, this NFC card is not registered. Please try scanning a valid VIP card.';
+      history.push({ role: 'user', text: `[NFC Card Scanned — INVALID/UNREGISTERED UID: ${uid}]` }, { role: 'model', text: t });
+      speak(t, 'SAD', { holdAfter: 3200 });
+    }
+    return;
+  }
+
+  if (d.event === 'OBSTACLE') {
+    hwState.dist = d.dist ?? hwState.dist;
+    updateHwUi();
+    showNfcBanner(`🛑 OBSTACLE DETECTED (${d.dist ?? '<35'} cm) — Paused`, 'invalid', 4000);
+    setEmotion('SURPRISED', 2500);
+    const now = performance.now();
+    if (!isSpeaking && (now - lastObstacleSpeech > 6000)) {
+      lastObstacleSpeech = now;
+      const t = ar ? 'لو سمحت، عديني.' : 'Oops, excuse me! Just trying to pass through.';
+      speak(t, 'SURPRISED');
+    }
+    return;
+  }
+
+  if (d.event === 'CLEAR') {
+    hwState.dist = d.dist ?? hwState.dist;
+    hwState.state = 'ESCORTING';
+    updateHwUi();
+    showNfcBanner('🟢 Path Clear — Resuming Escort', 'valid', 3000);
+    setEmotion('HAPPY', 2000);
+    return;
+  }
+
+  if (d.event === 'MARKER') {
+    hwState.markers = d.passed || hwState.markers;
+    updateHwUi();
+    showNfcBanner(`📍 Station Marker ${d.passed}/${d.target || 1}`, 'valid', 3000);
+    return;
+  }
+
+  if (d.event === 'ARRIVED') {
+    hwState.state = 'ARRIVED';
+    updateHwUi();
+    showNfcBanner(`🎉 ARRIVED AT DESTINATION`, 'valid', 5000);
+    const t = ar ? 'وصلنا! استمتع بالجلسة.' : 'Here we are! Enjoy the session.';
+    history.push({ role: 'user', text: `[Robot Arrived at Destination]` }, { role: 'model', text: t });
+    speak(t, 'HAPPY', { holdAfter: 3500 });
+    return;
+  }
+}
+
+/* =============================================================================
+   7. WAKE, SETTINGS, GESTURES
+   ============================================================================= */
+let wakeLock = null;
+async function keepScreenOn() { try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && awake) keepScreenOn(); });
+
+$('bleBadge').onclick = (e) => {
+  e.stopPropagation();
+  if (!hwState.connected) connectBle();
+  else openSettings();
+};
+
+async function wake() {
+  if (awake) return;
+  awake = true;
+  $('wake').style.display = 'none';
+  ensureAudio();
+  prewarmClientAudio();
+  // ONLY camera option has fullscreen capability; normal waking stays within standard canvas
+  try { await screen.orientation.lock('landscape'); } catch (e) {}
+  keepScreenOn();
+  baseState = 'NEUTRAL';
+  setEmotion('SURPRISED', 500);   // little "oh!" when waking up
+  initRecognition(); startRec();
+  initCamera();
+  updateLangBadge();
+  updateMicBadge('listening');
+  setTimeout(() => {
+    const t = cfg.lang === 'ar-EG' ? 'أهلاً! أنا أورا. نورت قمة IEEE RAS في الجامعة المصرية اليابانية!' : "Hi! I'm AURA. Welcome to the IEEE RAS MENA Summit at E-JUST!";
+    history.push({ role: 'model', text: t });
+    speak(t, 'HAPPY');
+  }, 450);
+}
+
+// Top Bar & Camera Action Handlers
+$('camBtn').onclick = (e) => { e.stopPropagation(); openCameraFullscreen(); };
+$('camCloseBtn').onclick = (e) => { e.stopPropagation(); closeCameraFullscreen(); };
+$('camFlipBtn').onclick = async (e) => {
+  e.stopPropagation();
+  const nextMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+  await startCameraStream(nextMode);
+};
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && camViewActive) closeCameraFullscreen();
+});
+
+$('langBadge').onclick = (e) => {
+  e.stopPropagation();
+  ensureAudio();
+  const nextLang = (cfg.lang === 'ar-EG') ? 'en-US' : 'ar-EG';
+  setLang(nextLang);
+  updateLangBadge();
+  if (awake) {
+    const ack = (nextLang === 'ar-EG') ? 'يلا نتكلم عربي!' : 'Switched to English!';
+    speak(ack, 'HAPPY', { holdAfter: 1500 });
+  }
+};
+
+$('micBadge').onclick = async (e) => {
+  e.stopPropagation();
+  ensureAudio();
+  awake = true;
+  $('wake').style.display = 'none';
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    s.getTracks().forEach(t => t.stop()); // release audio hardware immediately
+  } catch (err) {}
+  initRecognition();
+  startRec();
+  updateMicBadge('listening');
+};
+
+$('wake').onclick = () => wake();
+
+// Tap = wake or instant interrupt (barge-in) while speaking. Long-press (1 s) = settings.
+let pressTimer = null, lastTap = 0;
+canvas.addEventListener('pointerdown', () => {
+  pressTimer = setTimeout(() => { pressTimer = null; openSettings(); }, 1000);
+});
+canvas.addEventListener('pointerup', () => {
+  if (!pressTimer) return; clearTimeout(pressTimer); pressTimer = null;
+  if (!awake) return wake();
+  ensureAudio();
+  if (isSpeaking || thinking) {
+    bargeIn();
+    return;
+  }
+  const now = performance.now();
+  setEmotion('HAPPY', 1200);   // a tap when idle is a friendly "boop"
+  lastTap = now;
+});
+canvas.addEventListener('pointerleave', () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
+
+function openSettings() {
+  $('sStyle').value = cfg.style || 'nordic';
+  $('sProvider').value = cfg.provider; $('sBridge').value = cfg.bridge; $('sOrKey').value = cfg.orKey; $('sOrModel').value = cfg.orModel;
+  $('sLang').value = cfg.lang; $('sVoice').value = cfg.voice; $('sCaptions').checked = cfg.captions; $('sBrows').checked = cfg.brows; $('sCamPrev').checked = cfg.camPrev;
+  $('sAllowAnyNfc').checked = hwState.allowAnyNfc;
+  updateHwUi();
+  $('settings').style.display = 'block'; $('status').textContent = logLines.join('\n') || `Bridge: ${bridgeBase()}`;
+}
+$('bSave').onclick = () => {
+  cfg.style = $('sStyle').value;
+  cfg.provider = $('sProvider').value; cfg.bridge = $('sBridge').value.trim(); cfg.orKey = $('sOrKey').value.trim(); cfg.orModel = $('sOrModel').value.trim() || cfg.orModel;
+  cfg.voice = $('sVoice').value; cfg.captions = $('sCaptions').checked; cfg.brows = $('sBrows').checked; cfg.camPrev = $('sCamPrev').checked;
+  hwState.allowAnyNfc = $('sAllowAnyNfc').checked;
+  store.set('allow_any_nfc', hwState.allowAnyNfc ? '1' : '0');
+  if (hwState.connected) sendBle({ cmd: 'ALLOW_ANY_NFC', allow: hwState.allowAnyNfc });
+  store.set('style_default_v2', cfg.style);
+  store.set('voice_fast_v2', cfg.voice);
+  for (const k of ['provider', 'bridge', 'orKey', 'orModel']) store.set(k, cfg[k]);
+  store.set('captions', cfg.captions ? '1' : '0'); store.set('brows', cfg.brows ? '1' : '0'); store.set('camPrev', cfg.camPrev ? '1' : '0');
+  if ($('sLang').value !== cfg.lang) setLang($('sLang').value);
+  $('caption').style.display = cfg.captions ? 'block' : 'none';
+  $('settings').style.display = 'none';
+};
+$('bBle').onclick = connectBle;
+$('bLearnNfc').onclick = () => {
+  // If an unrecognized card was just scanned, register it immediately; otherwise arm Learn Mode for next scan
+  if (hwState.lastNfcUid && hwState.lastNfcUid !== 'NONE' && hwState.lastNfcUid !== 'READ_ERROR' && !vipCards[hwState.lastNfcUid]) {
+    const newName = ($('sNewCardName') && $('sNewCardName').value.trim()) || 'VIP Guest';
+    const destParts = (($('sNewCardDest') && $('sNewCardDest').value) || 'Main Conference Hall|1').split('|');
+    registerCardUid(hwState.lastNfcUid, newName, destParts[0], parseInt(destParts[1] || '1', 10));
+    showNfcBanner(`✅ Registered Last UID ${hwState.lastNfcUid} → ${newName}`, 'valid', 5000);
+    return;
+  }
+  nfcLearnMode = !nfcLearnMode;
+  $('bLearnNfc').textContent = nfcLearnMode ? '⏳ Waiting for NFC Tap on ESP32...' : 'Scan Next Card to Register';
+};
+$('bSimValidNfc').onclick = () => {
+  $('settings').style.display = 'none';
+  onEsp32({ event: 'NFC_TAP', valid: true, uid: '53B80572420001', name: 'VIP Guest 1', id: 1 });
+};
+$('bSimInvalidNfc').onclick = () => {
+  $('settings').style.display = 'none';
+  onEsp32({ event: 'NFC_TAP', valid: false, uid: 'DE:AD:BE:EF', reason: 'UNREGISTERED' });
+};
+$('bSimReadErr').onclick = () => {
+  $('settings').style.display = 'none';
+  onEsp32({ event: 'NFC_TAP', valid: false, uid: 'READ_ERROR', reason: 'READ_ERROR' });
+};
+$('bSimObstacle').onclick = () => {
+  $('settings').style.display = 'none';
+  onEsp32({ event: 'OBSTACLE', dist: 21 });
+};
+$('bSimArrived').onclick = () => {
+  $('settings').style.display = 'none';
+  onEsp32({ event: 'ARRIVED' });
+};
+$('bCmdWave').onclick = () => { sendBle({ cmd: 'WAVE' }); };
+$('bCmdReset').onclick = () => { sendBle({ cmd: 'RESET' }); hwState.state = 'IDLE'; updateHwUi(); };
+$('bFull').onclick = () => { try { document.documentElement.requestFullscreen(); } catch (e) {} };
+$('bDemo').onclick = async () => {
+  $('settings').style.display = 'none';
+  for (const e of ['NEUTRAL', 'LISTENING', 'HAPPY', 'CURIOUS', 'THINKING', 'SURPRISED', 'SAD', 'WINK', 'LOVE', 'NEUTRAL']) { setEmotion(e); await new Promise(r => setTimeout(r, 1600)); }
+};
+updateHwUi();
+
+// Small debug/automation hook
+window.AURA = { setEmotion, setFaceStyle, speak, handleTurn, sendBle, onEsp32, registerCardUid, bargeIn, gaze, history, hwState, vipCards, get state() { return { emotion, isSpeaking, thinking, awake, style: cfg.style, hwState }; } };
+</script>
+</body>
+</html>

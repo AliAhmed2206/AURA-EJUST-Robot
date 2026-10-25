@@ -3,10 +3,8 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/", "destination": "/docs/index.html" },
-    { "source": "/face_lab", "destination": "/docs/face_lab.html" },
-    { "source": "/face_lab.html", "destination": "/docs/face_lab.html" },
-    { "source": "/(.*)", "destination": "/docs/$1" }
+    { "source": "/docs/(.*)", "destination": "/docs/$1" },
+    { "source": "/(.*)", "destination": "/$1" }
   ],
   "headers": [
     {
