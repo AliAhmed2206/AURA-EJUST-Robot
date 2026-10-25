@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#05030a" />
 <meta name="mobile-web-app-capable" content="yes" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>AURA</title>
 <style>
   html, body { margin: 0; height: 100%; background: #05030a; overflow: hidden; touch-action: manipulation;
@@ -303,12 +306,25 @@ if (cfg.provider !== 'openrouter' && !cfg.geminiKey) {
 function setFaceStyle(s) { cfg.style = s; store.set('style_default_v2', s); }
 window.setFaceStyle = setFaceStyle;
 const hasBridge = () => true;
+const LIVE_BRIDGE_URL = 'https://put-properties-voltage-attacks.trycloudflare.com';
+
+// Purge any stale or dead tunnel references from previous sessions
+if (cfg.bridge && (cfg.bridge.includes('loca.lt') || cfg.bridge.includes('drawing-garlic') || cfg.bridge.includes('undefined'))) {
+  cfg.bridge = '';
+  store.set('bridge', '');
+}
+
 const bridgeBase = () => {
-  if (cfg.bridge && cfg.bridge.trim()) return cfg.bridge.trim().replace(/\/+$/, '');
+  if (cfg.bridge && cfg.bridge.trim() && !cfg.bridge.includes('loca.lt') && !cfg.bridge.includes('drawing-garlic')) {
+    return cfg.bridge.trim().replace(/\/+$/, '');
+  }
   if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     return (location.protocol + '//' + location.host).replace(/\/+$/, '');
   }
-  return 'https://drawing-garlic-resulted-pos.trycloudflare.com';
+  if (location.hostname.includes('vercel.app')) {
+    return location.origin;
+  }
+  return LIVE_BRIDGE_URL;
 };
 const TUNNEL_HEADERS = { 'Bypass-Tunnel-Reminder': 'true' };
 
@@ -1678,25 +1694,30 @@ async function askBrain(prompt, context) {
   try {
     // Priority 1: Antigravity Pro Session on PC (Active Google Account: aliahmed120250176@gmail.com with Gemini 2.5 Flash)
     if (cfg.provider === 'relay' || !cfg.provider) {
-      try {
-        log('Querying Antigravity Pro Bridge:', bridgeBase());
-        const res = await fetch(`${bridgeBase()}/api/chat`, {
-          method: 'POST', signal,
-          headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS },
-          body: JSON.stringify({ prompt, history: history.slice(-12), context: fullContext || null, voice: cfg.voice, image_b64: imgB64 }),
-        });
-        if (res.ok) {
-          const j = await res.json();
-          return {
-            text: j.reply,
-            emotion: (j.emotion || 'NEUTRAL').toUpperCase(),
-            action: j.action || null,
-            clauses: j.clauses || null,
-            firstAudioB64: j.first_audio_b64 || null,
-          };
+      const endpointsToTry = [bridgeBase()];
+      if (bridgeBase() !== LIVE_BRIDGE_URL) endpointsToTry.push(LIVE_BRIDGE_URL);
+
+      for (const base of endpointsToTry) {
+        try {
+          log('Querying Antigravity Pro Bridge:', base);
+          const res = await fetch(`${base}/api/chat`, {
+            method: 'POST', signal,
+            headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS },
+            body: JSON.stringify({ prompt, history: history.slice(-12), context: fullContext || null, voice: cfg.voice, image_b64: imgB64 }),
+          });
+          if (res.ok) {
+            const j = await res.json();
+            return {
+              text: j.reply,
+              emotion: (j.emotion || 'NEUTRAL').toUpperCase(),
+              action: j.action || null,
+              clauses: j.clauses || null,
+              firstAudioB64: j.first_audio_b64 || null,
+            };
+          }
+        } catch (bridgeErr) {
+          log(`Bridge attempt at ${base} notice:`, bridgeErr.message);
         }
-      } catch (bridgeErr) {
-        log('Antigravity Pro Bridge notice:', bridgeErr.message);
       }
     }
 
@@ -1908,22 +1929,16 @@ async function getOfflineReply(text) {
     };
   }
 
-  // 16. Fallbacks: 6 Varied, Contextual, Intelligent Responses (Never Repeat a Single Phrase)
+  // 16. Fallbacks: Honest neural reconnection notices instead of memorized brochure text
   const fallbacksEn = [
-    "That is an interesting thought! While I continue learning, would you like directions to the keynote auditorium or assistance with your VIP badge?",
-    "I'm always expanding my knowledge from our wonderful summit guests! You can ask me about our IEEE robotics team, campus facilities, or voice driving commands.",
-    "Fascinating! Feel free to ask me for directions, about Prof. El-Sabbagh, or tell me to move forward or turn around.",
-    "I am thrilled to have you here at E-JUST! How can I assist your visit or guide you through today's summit schedule?",
-    "Great thought! I'm here to welcome guests, verify university NFC cards, and escort attendees. What can I do for you next?",
-    "I love chatting with summit attendees! Let me know if you need any directions or want to see my expressive humanoid eyes react!"
+    "I'm momentarily reconnecting with my Gemini brain! Ask me again in just a second.",
+    "My neural bridge had a quick network hiccup, but I'm listening now. What did you ask?",
+    "Hold on just a moment, I'm syncing with my multimodal reasoning engine. What's on your mind?"
   ];
   const fallbacksAr = [
-    "سؤال جميل ومثير للاهتمام! أنا بتعلم كل يوم من ضيوفنا، تحب أوجهك لقاعة المحاضرات الرئيسية أو أساعدك في أي استفسار؟",
-    "فكرة ممتازة! أنا هنا عشان أساعدك في فعاليات القمة، تحب أوصلك لأي قاعة ولا تحب نتحرك لقدام مع بعض؟",
-    "مبسوطة جداً بوجودك معانا في إيجست! تقدر تسألني عن فرع الروبوتات، أو تقولي اتحركي لقدام أو لفي، وهنفذ فوراً.",
-    "نورت فعاليات قمة الروبوتات في الجامعة المصرية اليابانية! لو محتاج تعرف مكان الكافتيريا أو القاعات قولي على طول.",
-    "حلو أوي! تقدر تسألني عن رئيس الجامعة أو فعاليات اليوم، أقدر أساعدك بإيه كمان؟",
-    "أنا دايماً في خدمتك! تحب نوصل للمدرج الرئيسي ولا حابب تستكشف معايا فعاليات القمة؟"
+    "ثواني بس مخي الذكي بيجدد الاتصال مع جيميني! اسألني تاني حالا وهرد عليك.",
+    "حصل تأخير بسيط في الاتصال مع سيرفر الذكاء الاصطناعي، أنا معاك دلوقتي، كنت بتقول إيه؟",
+    "لحظة واحدة بتصل بمخي السحابي! اتفضل أنا سامعاك كويس دلوقتي."
   ];
   const pool = ar ? fallbacksAr : fallbacksEn;
   const picked = pool[Math.floor(Math.random() * pool.length)];

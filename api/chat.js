@@ -2,7 +2,7 @@ export default async function handler(req, res) {
   // CORS configuration
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-gemini-key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-gemini-key, Bypass-Tunnel-Reminder');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -12,13 +12,35 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const TUNNEL_URL = process.env.BRIDGE_URL || 'https://put-properties-voltage-attacks.trycloudflare.com';
+
+  // 1. Priority: Forward to Antigravity PC Pro Session on Vertex AI (Active Google Account with Gemini 2.5 Flash & Edge-TTS)
+  try {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 12000);
+    const relayRes = await fetch(`${TUNNEL_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
+      body: JSON.stringify(req.body || {}),
+      signal: ctrl.signal
+    });
+    clearTimeout(timeout);
+    if (relayRes.ok) {
+      const data = await relayRes.json();
+      return res.status(200).json(data);
+    }
+  } catch (relayErr) {
+    console.warn('[Vercel Bridge Proxy Notice]:', relayErr.message);
+  }
+
+  // 2. Direct Gemini Cloud API fallback if an API key is provided
   try {
     const { prompt, history = [], context = '', image_b64, model: clientModel } = req.body || {};
     const apiKey = req.headers['x-gemini-key'] || process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return res.status(400).json({
-        error: 'No GEMINI_API_KEY configured. Please provide x-gemini-key header or configure in Vercel settings.'
+      return res.status(503).json({
+        error: 'Antigravity Pro Bridge is reconnecting. Please check connection to http://127.0.0.1:8080.'
       });
     }
 
