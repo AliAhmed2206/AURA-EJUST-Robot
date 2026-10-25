@@ -747,6 +747,9 @@ async def post_esp32_telemetry(request: Request):
     if "event" in body: esp32_state["event"] = body["event"]
     if "uid" in body: esp32_state["uid"] = body["uid"]
     if "dist" in body: esp32_state["dist"] = body["dist"]
+    if "back_dist" in body: esp32_state["back_dist"] = body["back_dist"]
+    if "ir" in body: esp32_state["ir"] = body["ir"]
+    if "dest" in body: esp32_state["dest"] = body["dest"]
     if "passed" in body: esp32_state["markers"] = body["passed"]
     if "state" in body: esp32_state["robot_state"] = body["state"]
     

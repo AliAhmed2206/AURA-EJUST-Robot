@@ -1,356 +1,249 @@
 /*
  * ======================================================================================
- * AURA-EJUST — WI-FI ROBOT HARDWARE CONTROLLER (ESP32 DevKit V1)
+ * AURA-EJUST — AI SCREEN & VOICE CONTROLLED WI-FI FIRMWARE (ESP32)
  * ======================================================================================
- * High-performance Wi-Fi Edition: Connects to local Wi-Fi or phone hotspot.
- * Eliminates Bluetooth pairing dependencies and distance limits.
- *
- * Hardware Components:
- *   1. ESP32-WROOM-32 DevKit V1
- *   2. MFRC522 NFC Reader (SPI) — 13.56 MHz (21 Official VIP Guest Cards)
- *   3. L298N Motor Driver + 4x 12V DC Motors (Differential Drive)
- *   4. 1 or 2 TCRT5000 IR Sensors (Line Tracking / Destination Station Markers)
- *   5. 1 or 2 HC-SR04 Ultrasonic Sensors (Front Obstacle Collision Safety)
- *   6. Wi-Fi Client -> Antigravity Local Relay Bridge / Cloud Gateway
+ * Integration:
+ *   - AI Screen & Voice Brain (AURA Galaxy A24 / WebApp / Gemini 2.5 Flash)
+ *   - Autonomous Escort Mission: HQ Door -> Grand Theatre (Line Tracking + Station Markers)
+ *   - Voice Driving Navigation: Forward, Reverse, Left, Right, Stop, Wave
+ *   - Dual Ultrasonic Active Safety Brakes (Front & Rear Collision Prevention)
+ *   - 3-Channel IR Line Tracking (IR_L: 32, IR_C: 23, IR_R: 22)
+ *   - High-Speed Non-Blocking Wi-Fi Relay Polling (~120ms latency)
  * ======================================================================================
  */
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <SPI.h>
-#include <MFRC522.h>
 
 // ======================================================================================
 // 1. WI-FI CREDENTIALS & SECURITY TOKEN CONFIGURATION
 // ======================================================================================
 
 // >>> EDIT YOUR WI-FI CREDENTIALS HERE <<<
-// You can use your mobile phone hotspot or local venue Wi-Fi:
-const char* WIFI_SSID     = "Galaxy A24";       // <-- Replace with your Hotspot / Wi-Fi SSID
-const char* WIFI_PASSWORD = "auraejustpassword"; // <-- Replace with your Wi-Fi Password
+const char* WIFI_SSID     = "Galaxy A24";          // <-- Phone hotspot or venue Wi-Fi SSID
+const char* WIFI_PASSWORD = "auraejustpassword";   // <-- Hotspot or Wi-Fi password
 
 // Dedicated Security / Auth Token
 const char* AURA_AUTH_TOKEN = "AURA-EJUST-VIP-2026-TOKEN";
 
 // Relay Server Address:
-// Primary: Local PC IP (fastest, <10ms latency on the same Wi-Fi)
+// Primary: Local PC Gateway (fastest response on the same Wi-Fi / hotspot)
 const char* SERVER_BASE_URL = "http://10.211.82.178:8080";
 
-// Fallback: Cloudflare Live Tunnel (use if testing over different networks / 4G)
+// Fallback: Public Cloudflare Tunnel (if testing across mobile 4G / separate networks)
 const char* CLOUD_TUNNEL_URL = "https://put-properties-voltage-attacks.trycloudflare.com";
 
-// ======================================================================================
-// 2. PIN DEFINITIONS (ESP32 DevKit V1)
-// ======================================================================================
-
-// MFRC522 NFC Reader (Hardware VSPI)
-#define NFC_SS_PIN      5     // SDA / SS
-#define NFC_RST_PIN     21    // Reset pin
-// SPI Default Pins: SCK=18, MISO=19, MOSI=23
-
-// L298N Dual H-Bridge Motor Driver (4 DC Motors)
-#define MOTOR_ENA_PIN   25    // Left Motors PWM Speed (0-255)
-#define MOTOR_IN1_PIN   26    // Left Motors Dir 1
-#define MOTOR_IN2_PIN   27    // Left Motors Dir 2
-#define MOTOR_IN3_PIN   14    // Right Motors Dir 1
-#define MOTOR_IN4_PIN   12    // Right Motors Dir 2
-#define MOTOR_ENB_PIN   13    // Right Motors PWM Speed (0-255)
-
-// IR Line Tracking Sensors (1 or 2 Sensors)
-#define IR_LEFT_PIN     34    // Left IR Sensor (Input Only pin)
-#define IR_RIGHT_PIN    35    // Right IR Sensor (Input Only pin, set to -1 if using only 1 IR)
-#define LINE_ACTIVE     LOW   // LOW when sensor sees black line (adjust if sensor inverted)
-
-// HC-SR04 Ultrasonic Sensors (1 or 2 Sensors)
-#define TRIG_PIN_1      2     // Front Ultrasonic Trig
-#define ECHO_PIN_1      4     // Front Ultrasonic Echo
-#define TRIG_PIN_2      16    // Optional 2nd Ultrasonic Trig (set to -1 if using only 1)
-#define ECHO_PIN_2      17    // Optional 2nd Ultrasonic Echo (set to -1 if using only 1)
-
-// Escort Speed & Safety Thresholds
-#define BASE_DRIVE_SPEED    150   // Normal line following PWM speed (0-255)
-#define TURN_SPEED          120   // Turning adjustment PWM speed
-#define OBSTACLE_STOP_CM    35    // Stop motors if obstacle closer than 35 cm
-
-// Polling interval (milliseconds)
-#define CMD_POLL_INTERVAL_MS  120 // Fast responsive HTTP polling
+// Active server endpoint
+String currentServerUrl = SERVER_BASE_URL;
 
 // ======================================================================================
-// 3. 21 REGISTERED SUMMIT NFC CARDS (Clean ID Numbering: VIP Guest 1 .. 21)
+// 2. HARDWARE PIN DEFINITIONS (Matching Your Exact Robot Wiring)
 // ======================================================================================
-struct VIPCard {
-    const char* code;
-    uint8_t id;
+
+// ---------- 3-CHANNEL IR LINE SENSORS ----------
+#define IR_L 32
+#define IR_C 23
+#define IR_R 22
+
+// ---------- L293D / L298N MOTOR DRIVER ----------
+#define L_IN1 14
+#define L_IN2 27
+#define L_EN  25
+
+#define R_IN1 26
+#define R_IN2 33
+#define R_EN  13
+
+// ---------- FRONT ULTRASONIC SENSOR ----------
+#define F_TRIG 19
+#define F_ECHO 35
+
+// ---------- REAR ULTRASONIC SENSOR ----------
+#define B_TRIG 18
+#define B_ECHO 34
+
+// ---------- TUNED ROBOT SETTINGS ----------
+#define ON_LINE           LOW   // LOW when sensor detects black line
+#define SPEED             170   // Normal cruising PWM speed (0-255)
+#define TURN_SPEED        200   // Turning adjustment PWM speed
+#define OBSTACLE_DISTANCE 15    // Safety stop threshold in cm
+#define CMD_POLL_INTERVAL 120   // Non-blocking Wi-Fi command polling interval (ms)
+#define TELEMETRY_INTERVAL 1500 // Periodic heartbeat telemetry interval (ms)
+
+// ======================================================================================
+// 3. ROBOT STATE MACHINE & MISSIONS
+// ======================================================================================
+enum RobotState {
+    STATE_IDLE,       // Waiting for AI Face instruction or guest greeting
+    STATE_ESCORTING,  // Navigating autonomous mission (HQ Door -> Theatre)
+    STATE_PAUSED,     // Temporarily halted by obstacle or voice "pause"
+    STATE_ARRIVED     // Successfully arrived at destination station (Theatre)
 };
 
-const VIPCard VIP_CARDS[] = {
-    {"53B80572420001", 1},
-    {"53B90572420001", 2},
-    {"53BA0572420001", 3},
-    {"53BB0572420001", 4},
-    {"53C00572420001", 5},
-    {"53C10572420001", 6},
-    {"53C20572420001", 7},
-    {"53C30572420001", 8},
-    {"53C80572420001", 9},
-    {"53C90572420001", 10},
-    {"53CA0572420001", 11},
-    {"53CB0572420001", 12},
-    {"53D00572420001", 13},
-    {"53D10572420001", 14},
-    {"53D20572420001", 15},
-    {"53D30572420001", 16},
-    {"53D80572420001", 17},
-    {"53D90572420001", 18},
-    {"53DA0572420001", 19},
-    {"53DB0572420001", 20},
-    {"53E00572420001", 21}
-};
-const int TOTAL_VIP_CARDS = sizeof(VIP_CARDS) / sizeof(VIP_CARDS[0]);
-
-// ======================================================================================
-// 4. ROBOT STATE MACHINE
-// ======================================================================================
-enum RobotState { STATE_IDLE, STATE_ESCORTING, STATE_PAUSED, STATE_ARRIVED };
 RobotState currentState = STATE_IDLE;
+String targetDestination = "Theatre"; // Default mission destination
+uint8_t targetMarkers = 1;           // 1 cross-line checkpoint from HQ Door to Theatre
+uint8_t markersCount = 0;            // Checkpoint markers counter
+bool frontObstacleDetected = false;
+bool rearObstacleDetected = false;
 
-String activeCardUid = "NONE";
-String activeGuestName = "VIP Guest";
-uint8_t targetMarkers = 1;
-uint8_t markersCount = 0;
-
-bool obstacleDetected = false;
-unsigned long lastPollTime = 0;
-unsigned long lastNfcScanTime = 0;
-
-// Manual Timed Movement State (Directional Voice & Wi-Fi Driving)
-unsigned long manualDriveEndTime = 0;
+// Timed Manual Driving State (Directional Voice Commands: "move forward", "turn right", etc.)
 bool manualDriveActive = false;
+unsigned long manualDriveEndTime = 0;
 int curManualLeftSpeed = 0;
 int curManualRightSpeed = 0;
 
-// Hardware Objects
-MFRC522 rfid(NFC_SS_PIN, NFC_RST_PIN);
-HTTPClient httpClient;
-WiFiClient wifiClient;
+// Timing counters
+unsigned long lastPollTime = 0;
+unsigned long lastTelemetryTime = 0;
+unsigned long lastMarkerDebounce = 0;
 
-// Active server endpoint in use
-String currentServerUrl = SERVER_BASE_URL;
+// ======================================================================================
+// 4. MOTOR CONTROL & PWM (Universal ESP32 Core Compatibility)
+// ======================================================================================
+
+// Compatible with both ESP32 Arduino Core 2.x and 3.x
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
+void setupPWM(int pin, int ch) {
+    ledcAttach(pin, 1000, 8);
+}
+void motorPWM(int pin, int ch, int speed) {
+    ledcWrite(pin, speed);
+}
+#else
+void setupPWM(int pin, int ch) {
+    ledcSetup(ch, 1000, 8);
+    ledcAttachPin(pin, ch);
+}
+void motorPWM(int pin, int ch, int speed) {
+    ledcWrite(ch, speed);
+}
+#endif
+
+void motor(int in1, int in2, int enPin, int ch, int speed) {
+    speed = constrain(speed, -255, 255);
+
+    digitalWrite(in1, speed > 0 ? HIGH : LOW);
+    digitalWrite(in2, speed < 0 ? HIGH : LOW);
+
+    motorPWM(enPin, ch, abs(speed));
+}
+
+void moveRobot(int left, int right) {
+    motor(L_IN1, L_IN2, L_EN, 0, left);
+    motor(R_IN1, R_IN2, R_EN, 1, right);
+}
+
+void stopRobot() {
+    moveRobot(0, 0);
+}
+
+// ======================================================================================
+// 5. ULTRASONIC SENSOR READINGS
+// ======================================================================================
+int distanceCM(int trig, int echo) {
+    digitalWrite(trig, LOW);
+    delayMicroseconds(2);
+
+    digitalWrite(trig, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trig, LOW);
+
+    unsigned long duration = pulseIn(echo, HIGH, 15000); // 15ms timeout ~2.5m range
+    if (duration == 0) return 999;
+    return duration / 58;
+}
 
 // Forward Declarations
-void setMotors(int leftSpeed, int rightSpeed);
-void stopMotors();
-void executeManualDrive(int leftSpeed, int rightSpeed, unsigned long durationMs);
-void pollRelayCommands();
 void postTelemetry(const String& event, const String& extraJson = "");
+void pollRelayCommands();
 void handleIncomingCommand(const String& cmd);
-long readUltrasonicCM(int trigPin, int echoPin);
-long getMinObstacleDistance();
+void executeManualDrive(int leftSpeed, int rightSpeed, unsigned long durationMs);
 const char* stateStr(RobotState s);
 
 // ======================================================================================
-// 5. MOTOR CONTROL
-// ======================================================================================
-void setMotors(int leftSpeed, int rightSpeed) {
-    if (leftSpeed >= 0) {
-        digitalWrite(MOTOR_IN1_PIN, HIGH);
-        digitalWrite(MOTOR_IN2_PIN, LOW);
-    } else {
-        digitalWrite(MOTOR_IN1_PIN, LOW);
-        digitalWrite(MOTOR_IN2_PIN, HIGH);
-        leftSpeed = -leftSpeed;
-    }
-
-    if (rightSpeed >= 0) {
-        digitalWrite(MOTOR_IN3_PIN, HIGH);
-        digitalWrite(MOTOR_IN4_PIN, LOW);
-    } else {
-        digitalWrite(MOTOR_IN3_PIN, LOW);
-        digitalWrite(MOTOR_IN4_PIN, HIGH);
-        rightSpeed = -rightSpeed;
-    }
-
-    analogWrite(MOTOR_ENA_PIN, constrain(leftSpeed, 0, 255));
-    analogWrite(MOTOR_ENB_PIN, constrain(rightSpeed, 0, 255));
-}
-
-void stopMotors() {
-    setMotors(0, 0);
-}
-
-// ======================================================================================
-// 6. ULTRASONIC & IR SENSORS
-// ======================================================================================
-long readUltrasonicCM(int trigPin, int echoPin) {
-    if (trigPin < 0 || echoPin < 0) return 999;
-    digitalWrite(trigPin, LOW);
-    delayMicroseconds(2);
-    digitalWrite(trigPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(trigPin, LOW);
-    long duration = pulseIn(echoPin, HIGH, 22000);
-    if (duration == 0) return 999;
-    return duration * 0.034 / 2;
-}
-
-long getMinObstacleDistance() {
-    long d1 = readUltrasonicCM(TRIG_PIN_1, ECHO_PIN_1);
-    long d2 = (TRIG_PIN_2 >= 0) ? readUltrasonicCM(TRIG_PIN_2, ECHO_PIN_2) : 999;
-    return min(d1, d2);
-}
-
-void executeManualDrive(int leftSpeed, int rightSpeed, unsigned long durationMs) {
-    if (leftSpeed > 0 && rightSpeed > 0) {
-        long dist = getMinObstacleDistance();
-        if (dist < OBSTACLE_STOP_CM) {
-            stopMotors();
-            manualDriveActive = false;
-            Serial.printf("[SAFETY] Forward movement blocked! Obstacle at %ld cm\n", dist);
-            postTelemetry("OBSTACLE", ",\"dist\":" + String(dist));
-            return;
-        }
-    }
-    curManualLeftSpeed = leftSpeed;
-    curManualRightSpeed = rightSpeed;
-    setMotors(leftSpeed, rightSpeed);
-    manualDriveEndTime = millis() + durationMs;
-    manualDriveActive = true;
-}
-
-// ======================================================================================
-// 7. LINE FOLLOWING & DESTINATION TRACKING
+// 6. MISSION NAVIGATION: HQ DOOR -> THEATRE (3-IR LINE TRACKING)
 // ======================================================================================
 void runEscortStep() {
-    long dist = getMinObstacleDistance();
+    int frontDist = distanceCM(F_TRIG, F_ECHO);
 
-    // 1. Front Obstacle Safety Interruption
-    if (dist < OBSTACLE_STOP_CM) {
-        stopMotors();
-        if (!obstacleDetected) {
-            obstacleDetected = true;
-            Serial.printf("[OBSTACLE] Distance: %ld cm — Motors Paused\n", dist);
-            postTelemetry("OBSTACLE", ",\"dist\":" + String(dist));
+    // Safety Obstacle Interruption
+    if (frontDist < OBSTACLE_DISTANCE) {
+        stopRobot();
+        if (!frontObstacleDetected) {
+            frontObstacleDetected = true;
+            Serial.printf("[SAFETY] Obstacle Ahead (%d cm)! Escort Paused\n", frontDist);
+            postTelemetry("OBSTACLE", ",\"dist\":" + String(frontDist));
         }
         return;
-    } else if (obstacleDetected) {
-        obstacleDetected = false;
-        Serial.printf("[CLEAR] Path Clear (%ld cm) — Resuming Escort\n", dist);
-        postTelemetry("CLEAR", ",\"dist\":" + String(dist));
+    } else if (frontObstacleDetected && frontDist >= (OBSTACLE_DISTANCE + 6)) {
+        frontObstacleDetected = false;
+        Serial.printf("[SAFETY] Path Clear (%d cm)! Resuming Escort\n", frontDist);
+        postTelemetry("CLEAR", ",\"dist\":" + String(frontDist));
     }
 
-    // 2. Read IR Sensor(s)
-    int leftIR = digitalRead(IR_LEFT_PIN);
-    int rightIR = (IR_RIGHT_PIN >= 0) ? digitalRead(IR_RIGHT_PIN) : -1;
-
-    // A. Single IR Sensor Mode (Checkpoint marker counter)
-    if (rightIR == -1) {
-        if (leftIR == LINE_ACTIVE) {
-            markersCount++;
-            Serial.printf("[MARKER] Station Crossed: %d / %d\n", markersCount, targetMarkers);
-            postTelemetry("MARKER", ",\"passed\":" + String(markersCount) + ",\"target\":" + String(targetMarkers));
-            if (markersCount >= targetMarkers) {
-                stopMotors();
-                currentState = STATE_ARRIVED;
-                postTelemetry("ARRIVED");
-                return;
-            }
-            delay(350); // debounce marker crossing
-        }
-        setMotors(BASE_DRIVE_SPEED, BASE_DRIVE_SPEED);
-        return;
-    }
-
-    // B. Two IR Sensors Mode (Left & Right Differential Line Tracking)
-    bool leftOn = (leftIR == LINE_ACTIVE);
-    bool rightOn = (rightIR == LINE_ACTIVE);
-
-    if (leftOn && rightOn) {
-        // Cross-line Station Marker (T-Junction)
-        markersCount++;
-        Serial.printf("[MARKER] Cross-line Station: %d / %d\n", markersCount, targetMarkers);
-        postTelemetry("MARKER", ",\"passed\":" + String(markersCount) + ",\"target\":" + String(targetMarkers));
-        if (markersCount >= targetMarkers) {
-            stopMotors();
-            currentState = STATE_ARRIVED;
-            postTelemetry("ARRIVED");
-            return;
-        }
-        setMotors(BASE_DRIVE_SPEED, BASE_DRIVE_SPEED);
-        delay(320); // Roll across marker
-    } else if (leftOn && !rightOn) {
-        // Drifted right -> Steer Left
-        setMotors(BASE_DRIVE_SPEED - 60, BASE_DRIVE_SPEED + 40);
-    } else if (!leftOn && rightOn) {
-        // Drifted left -> Steer Right
-        setMotors(BASE_DRIVE_SPEED + 40, BASE_DRIVE_SPEED - 60);
-    } else {
-        // Both off line (straight tracking or slight wander)
-        setMotors(BASE_DRIVE_SPEED, BASE_DRIVE_SPEED);
-    }
-}
-
-// ======================================================================================
-// 8. NFC SCANNER (Supports 7-byte & 4-byte UIDs)
-// ======================================================================================
-void checkNfcReader() {
-    if (!rfid.PICC_IsNewCardPresent()) return;
+    // Read 3 IR Sensors
+    bool L = (digitalRead(IR_L) == ON_LINE);
+    bool C = (digitalRead(IR_C) == ON_LINE);
+    bool R = (digitalRead(IR_R) == ON_LINE);
 
     unsigned long now = millis();
-    if (now - lastNfcScanTime < 1500) return; // Debounce repeated reads
 
-    if (!rfid.PICC_ReadCardSerial()) {
-        lastNfcScanTime = now;
-        Serial.println("[NFC] Read error (card pulled away too fast)");
-        postTelemetry("NFC_TAP", ",\"valid\":false,\"uid\":\"READ_ERROR\"");
+    // CASE 4: Station Marker / T-Junction (All 3 Sensors on Cross-line)
+    if (L && C && R) {
+        if (now - lastMarkerDebounce > 600) {
+            lastMarkerDebounce = now;
+            markersCount++;
+            Serial.printf("[STATION] Cross-line Marker: %d / %d\n", markersCount, targetMarkers);
+            postTelemetry("MARKER", ",\"passed\":" + String(markersCount) + ",\"target\":" + String(targetMarkers));
+
+            if (markersCount >= targetMarkers) {
+                stopRobot();
+                currentState = STATE_ARRIVED;
+                Serial.printf("[DESTINATION] Arrived at %s!\n", targetDestination.c_str());
+                postTelemetry("ARRIVED", ",\"dest\":\"" + targetDestination + "\"");
+                return;
+            }
+        }
+        // Roll smoothly across the marker line
+        moveRobot(SPEED, SPEED);
         return;
     }
-    lastNfcScanTime = now;
 
-    // Convert UID bytes to uppercase Hex String (e.g. "53B80572420001")
-    String uidStr = "";
-    for (byte i = 0; i < rfid.uid.size; i++) {
-        if (rfid.uid.uidByte[i] < 0x10) uidStr += "0";
-        uidStr += String(rfid.uid.uidByte[i], HEX);
+    // CASE 1: Line Centered
+    if (!L && C && !R) {
+        moveRobot(SPEED, SPEED);
     }
-    uidStr.toUpperCase();
-    activeCardUid = uidStr;
-
-    rfid.PICC_HaltA();
-    rfid.PCD_StopCrypto1();
-
-    Serial.print("[NFC Scanned] Code: ");
-    Serial.println(uidStr);
-
-    // Check against the 21 official VIP cards
-    int matchedIdx = -1;
-    for (int i = 0; i < TOTAL_VIP_CARDS; i++) {
-        if (uidStr.equalsIgnoreCase(VIP_CARDS[i].code)) {
-            matchedIdx = i;
-            break;
+    // CASE 2: Drifting Right -> Steer Left
+    else if (L && !R) {
+        moveRobot(SPEED / 2, TURN_SPEED);
+    }
+    // CASE 3: Drifting Left -> Steer Right
+    else if (R && !L) {
+        moveRobot(TURN_SPEED, SPEED / 2);
+    }
+    // CASE 5: Line Temporarily Lost
+    else if (!L && !C && !R) {
+        // Check rear ultrasonic before gentle adjustment
+        int backDist = distanceCM(B_TRIG, B_ECHO);
+        if (backDist > OBSTACLE_DISTANCE) {
+            // Gentle reverse nudge to re-acquire the guide line
+            moveRobot(-SPEED / 2, -SPEED / 2);
+            delay(80);
+            stopRobot();
+        } else {
+            stopRobot();
         }
     }
-
-    if (matchedIdx >= 0) {
-        int guestId = VIP_CARDS[matchedIdx].id;
-        activeGuestName = "VIP Guest " + String(guestId);
-        markersCount = 0;
-
-        Serial.printf("[NFC VALID] Welcome VIP Guest %d (Card: %s)\n", guestId, uidStr.c_str());
-
-        postTelemetry("NFC_TAP", ",\"valid\":true,\"uid\":\"" + uidStr + "\",\"id\":" + String(guestId) + ",\"name\":\"" + activeGuestName + "\"");
-
-        // Start Escorting after brief welcome pause
-        delay(1200);
-        currentState = STATE_ESCORTING;
-    } else {
-        Serial.printf("[NFC INVALID] Unknown Card Code: %s\n", uidStr.c_str());
-        postTelemetry("NFC_TAP", ",\"valid\":false,\"uid\":\"" + uidStr + "\",\"reason\":\"UNREGISTERED\"");
+    // CASE 6: Other sensor patterns (Gentle forward progression)
+    else {
+        moveRobot(SPEED, SPEED);
     }
 }
 
 // ======================================================================================
-// 9. WI-FI HTTP RELAY COMMUNICATION
+// 7. WI-FI HTTP RELAY CLIENT (COMMAND POLLING & TELEMETRY)
 // ======================================================================================
 void postTelemetry(const String& event, const String& extraJson) {
     if (WiFi.status() != WL_CONNECTED) return;
@@ -361,19 +254,23 @@ void postTelemetry(const String& event, const String& extraJson) {
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(800);
 
-    long dist = getMinObstacleDistance();
+    int frontDist = distanceCM(F_TRIG, F_ECHO);
+    int backDist = distanceCM(B_TRIG, B_ECHO);
+    bool L = (digitalRead(IR_L) == ON_LINE);
+    bool C = (digitalRead(IR_C) == ON_LINE);
+    bool R = (digitalRead(IR_R) == ON_LINE);
+    String irStr = String(L ? "1" : "0") + String(C ? "1" : "0") + String(R ? "1" : "0");
+
     String payload = "{\"token\":\"" + String(AURA_AUTH_TOKEN) +
                      "\",\"event\":\"" + event +
                      "\",\"state\":\"" + String(stateStr(currentState)) +
-                     "\",\"dist\":" + String(dist) +
+                     "\",\"dist\":" + String(frontDist) +
+                     ",\"back_dist\":" + String(backDist) +
+                     ",\"ir\":\"" + irStr + "\"" +
+                     ",\"markers\":" + String(markersCount) +
                      extraJson + "}";
 
-    int code = http.POST(payload);
-    if (code > 0) {
-        // Serial.printf("[TELEMETRY POST] %s (HTTP %d)\n", event.c_str(), code);
-    } else {
-        // Serial.printf("[TELEMETRY ERR] %s (code %d)\n", http.errorToString(code).c_str(), code);
-    }
+    http.POST(payload);
     http.end();
 }
 
@@ -383,12 +280,11 @@ void pollRelayCommands() {
     HTTPClient http;
     String url = currentServerUrl + "/api/esp32/command?token=" + String(AURA_AUTH_TOKEN);
     http.begin(url);
-    http.setTimeout(600); // 600ms timeout for non-blocking loop
+    http.setTimeout(500); // 500ms timeout for non-blocking loop
 
     int httpCode = http.GET();
     if (httpCode == 200) {
         String payload = http.getString();
-        // Parse simple JSON: {"cmd": "MOVE_FWD", ...}
         int cmdIdx = payload.indexOf("\"cmd\":");
         if (cmdIdx >= 0) {
             int startQuote = payload.indexOf('"', cmdIdx + 6);
@@ -406,76 +302,120 @@ void pollRelayCommands() {
     http.end();
 }
 
+// ======================================================================================
+// 8. VOICE & AI SCREEN COMMAND HANDLER
+// ======================================================================================
 void handleIncomingCommand(const String& cmd) {
-    Serial.print("[WI-FI CMD RX] ");
+    Serial.print("[AI COMMAND RECEIVED] ");
     Serial.println(cmd);
 
-    if (cmd.indexOf("START_ESCORT") >= 0) {
+    // 1. Mission: Start Escorting from HQ Door to Theatre
+    if (cmd.indexOf("START_ESCORT") >= 0 || cmd.indexOf("ESCORT") >= 0) {
         markersCount = 0;
+        targetMarkers = 1; // HQ Door to Grand Theatre = 1 marker station
+        targetDestination = "Theatre";
         currentState = STATE_ESCORTING;
-        Serial.println("[CMD] Escort Started via Wi-Fi Command");
+        manualDriveActive = false;
+        Serial.println("[MISSION] Autonomous Escort to Theatre Started!");
+        postTelemetry("MISSION_START", ",\"dest\":\"Theatre\"");
+    }
+    // 2. Pause / Stop
+    else if (cmd.indexOf("PAUSE") >= 0 || cmd.indexOf("STOP") >= 0 || cmd.indexOf("HALT") >= 0) {
+        stopRobot();
+        manualDriveActive = false;
+        currentState = STATE_IDLE;
+        Serial.println("[CMD] Robot Stopped");
         postTelemetry("STATUS");
-    } else if (cmd.indexOf("PAUSE") >= 0) {
-        stopMotors();
-        currentState = STATE_PAUSED;
-        Serial.println("[CMD] Escort Paused");
-        postTelemetry("STATUS");
-    } else if (cmd.indexOf("RESUME") >= 0) {
+    }
+    // 3. Resume Escort
+    else if (cmd.indexOf("RESUME") >= 0) {
         currentState = STATE_ESCORTING;
         Serial.println("[CMD] Escort Resumed");
         postTelemetry("STATUS");
-    } else if (cmd.indexOf("RESET") >= 0) {
-        stopMotors();
-        currentState = STATE_IDLE;
-        markersCount = 0;
-        activeCardUid = "NONE";
-        Serial.println("[CMD] System Reset to IDLE");
-        postTelemetry("STATUS");
-    } else if (cmd.indexOf("MOVE_FWD") >= 0) {
+    }
+    // 4. Directional Voice Driving: Move Forward
+    else if (cmd.indexOf("MOVE_FWD") >= 0 || cmd.indexOf("FORWARD") >= 0) {
         int duration = 1500;
         int idx = cmd.indexOf("\"ms\":");
         if (idx >= 0) duration = cmd.substring(idx + 5).toInt();
         if (duration <= 0) duration = 1500;
-        executeManualDrive(BASE_DRIVE_SPEED, BASE_DRIVE_SPEED, duration);
-        Serial.printf("[CMD] Wi-Fi Move Forward (%d ms)\n", duration);
+        executeManualDrive(SPEED, SPEED, duration);
+        Serial.printf("[VOICE] Move Forward (%d ms)\n", duration);
         postTelemetry("MANUAL", ",\"action\":\"MOVE_FWD\"");
-    } else if (cmd.indexOf("MOVE_REV") >= 0) {
+    }
+    // 5. Directional Voice Driving: Move Backward (With Rear Ultrasonic Safety)
+    else if (cmd.indexOf("MOVE_REV") >= 0 || cmd.indexOf("BACKWARD") >= 0) {
+        int backDist = distanceCM(B_TRIG, B_ECHO);
+        if (backDist < OBSTACLE_DISTANCE) {
+            stopRobot();
+            Serial.printf("[SAFETY] Cannot Reverse! Rear Obstacle at %d cm\n", backDist);
+            postTelemetry("OBSTACLE_REAR", ",\"back_dist\":" + String(backDist));
+            return;
+        }
         int duration = 1500;
         int idx = cmd.indexOf("\"ms\":");
         if (idx >= 0) duration = cmd.substring(idx + 5).toInt();
         if (duration <= 0) duration = 1500;
-        executeManualDrive(-BASE_DRIVE_SPEED, -BASE_DRIVE_SPEED, duration);
-        Serial.printf("[CMD] Wi-Fi Move Backward (%d ms)\n", duration);
+        executeManualDrive(-SPEED, -SPEED, duration);
+        Serial.printf("[VOICE] Move Backward (%d ms)\n", duration);
         postTelemetry("MANUAL", ",\"action\":\"MOVE_REV\"");
-    } else if (cmd.indexOf("TURN_LEFT") >= 0) {
+    }
+    // 6. Directional Voice Driving: Turn Left
+    else if (cmd.indexOf("TURN_LEFT") >= 0 || cmd.indexOf("LEFT") >= 0) {
         int duration = 650;
         int idx = cmd.indexOf("\"ms\":");
         if (idx >= 0) duration = cmd.substring(idx + 5).toInt();
         if (duration <= 0) duration = 650;
         executeManualDrive(-TURN_SPEED, TURN_SPEED, duration);
-        Serial.printf("[CMD] Wi-Fi Turn Left (%d ms)\n", duration);
+        Serial.printf("[VOICE] Turn Left (%d ms)\n", duration);
         postTelemetry("MANUAL", ",\"action\":\"TURN_LEFT\"");
-    } else if (cmd.indexOf("TURN_RIGHT") >= 0) {
+    }
+    // 7. Directional Voice Driving: Turn Right
+    else if (cmd.indexOf("TURN_RIGHT") >= 0 || cmd.indexOf("RIGHT") >= 0) {
         int duration = 650;
         int idx = cmd.indexOf("\"ms\":");
         if (idx >= 0) duration = cmd.substring(idx + 5).toInt();
         if (duration <= 0) duration = 650;
         executeManualDrive(TURN_SPEED, -TURN_SPEED, duration);
-        Serial.printf("[CMD] Wi-Fi Turn Right (%d ms)\n", duration);
+        Serial.printf("[VOICE] Turn Right (%d ms)\n", duration);
         postTelemetry("MANUAL", ",\"action\":\"TURN_RIGHT\"");
-    } else if (cmd.indexOf("WAVE") >= 0) {
-        Serial.println("[CMD] Wi-Fi Wave Gesture");
+    }
+    // 8. Friendly Greeting Wave Gesture
+    else if (cmd.indexOf("WAVE") >= 0) {
+        Serial.println("[GESTURE] Friendly Waving Motion");
         executeManualDrive(-TURN_SPEED / 2, TURN_SPEED / 2, 220);
         delay(250);
         executeManualDrive(TURN_SPEED / 2, -TURN_SPEED / 2, 220);
         postTelemetry("GESTURE", ",\"action\":\"WAVE\"");
-    } else if (cmd.indexOf("STOP") >= 0) {
-        stopMotors();
+    }
+    // 9. Reset System
+    else if (cmd.indexOf("RESET") >= 0) {
+        stopRobot();
         manualDriveActive = false;
         currentState = STATE_IDLE;
-        Serial.println("[CMD] Wi-Fi Hard Stop");
+        markersCount = 0;
+        Serial.println("[CMD] Reset to IDLE");
         postTelemetry("STATUS");
     }
+}
+
+void executeManualDrive(int leftSpeed, int rightSpeed, unsigned long durationMs) {
+    // If driving forward, check front ultrasonic
+    if (leftSpeed > 0 && rightSpeed > 0) {
+        int frontDist = distanceCM(F_TRIG, F_ECHO);
+        if (frontDist < OBSTACLE_DISTANCE) {
+            stopRobot();
+            manualDriveActive = false;
+            Serial.printf("[SAFETY] Forward move blocked! Front obstacle at %d cm\n", frontDist);
+            postTelemetry("OBSTACLE", ",\"dist\":" + String(frontDist));
+            return;
+        }
+    }
+    curManualLeftSpeed = leftSpeed;
+    curManualRightSpeed = rightSpeed;
+    moveRobot(leftSpeed, rightSpeed);
+    manualDriveEndTime = millis() + durationMs;
+    manualDriveActive = true;
 }
 
 const char* stateStr(RobotState s) {
@@ -489,43 +429,35 @@ const char* stateStr(RobotState s) {
 }
 
 // ======================================================================================
-// 10. SETUP & MAIN LOOP
+// 9. SETUP
 // ======================================================================================
 void setup() {
     Serial.begin(115200);
     Serial.println("\n=======================================================");
-    Serial.println("  AURA-EJUST — WI-FI HARDWARE CONTROLLER STARTING");
+    Serial.println("  AURA-EJUST — AI SCREEN & VOICE WI-FI CONTROLLER");
     Serial.println("=======================================================");
 
-    // 1. Initialize SPI & MFRC522 NFC Reader
-    SPI.begin(18, 19, 23, NFC_SS_PIN);
-    rfid.PCD_Init();
-    delay(4);
-    byte v = rfid.PCD_ReadRegister(rfid.VersionReg);
-    Serial.printf("[NFC INIT] Reader Chip Version: 0x%02X (%s)\n", v, (v == 0x92 || v == 0x91) ? "OK" : "CHECK WIRING");
+    // 1. Initialize IR Sensors
+    pinMode(IR_L, INPUT);
+    pinMode(IR_C, INPUT);
+    pinMode(IR_R, INPUT);
 
-    // 2. Initialize Motor Driver Pins
-    pinMode(MOTOR_ENA_PIN, OUTPUT);
-    pinMode(MOTOR_IN1_PIN, OUTPUT);
-    pinMode(MOTOR_IN2_PIN, OUTPUT);
-    pinMode(MOTOR_IN3_PIN, OUTPUT);
-    pinMode(MOTOR_IN4_PIN, OUTPUT);
-    pinMode(MOTOR_ENB_PIN, OUTPUT);
-    stopMotors();
+    // 2. Initialize Motor Direction & PWM
+    pinMode(L_IN1, OUTPUT);
+    pinMode(L_IN2, OUTPUT);
+    pinMode(R_IN1, OUTPUT);
+    pinMode(R_IN2, OUTPUT);
+    setupPWM(L_EN, 0);
+    setupPWM(R_EN, 1);
+    stopRobot();
 
-    // 3. Initialize IR Line Sensors
-    pinMode(IR_LEFT_PIN, INPUT);
-    if (IR_RIGHT_PIN >= 0) pinMode(IR_RIGHT_PIN, INPUT);
+    // 3. Initialize Dual Ultrasonic Sensors
+    pinMode(F_TRIG, OUTPUT);
+    pinMode(F_ECHO, INPUT);
+    pinMode(B_TRIG, OUTPUT);
+    pinMode(B_ECHO, INPUT);
 
-    // 4. Initialize Ultrasonic Pins
-    pinMode(TRIG_PIN_1, OUTPUT);
-    pinMode(ECHO_PIN_1, INPUT);
-    if (TRIG_PIN_2 >= 0) {
-        pinMode(TRIG_PIN_2, OUTPUT);
-        pinMode(ECHO_PIN_2, INPUT);
-    }
-
-    // 5. Connect to Wi-Fi
+    // 4. Connect to Wi-Fi
     Serial.printf("[WI-FI] Connecting to SSID: %s\n", WIFI_SSID);
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -544,14 +476,17 @@ void setup() {
         Serial.printf("[WI-FI] Auth Token:       %s\n", AURA_AUTH_TOKEN);
         postTelemetry("ONLINE", ",\"ip\":\"" + WiFi.localIP().toString() + "\"");
     } else {
-        Serial.println("\n[WI-FI WARNING] Connection timed out! Retrying in background loop...");
+        Serial.println("\n[WI-FI WARNING] Connection timed out! Will auto-reconnect in loop...");
     }
 
     Serial.println("=======================================================");
-    Serial.println("  SYSTEM READY — WAITING FOR COMMANDS & NFC CARDS");
+    Serial.println("  SYSTEM READY — WAITING FOR AI VOICE & SCREEN COMMANDS");
     Serial.println("=======================================================\n");
 }
 
+// ======================================================================================
+// 10. MAIN LOOP
+// ======================================================================================
 void loop() {
     unsigned long now = millis();
 
@@ -565,41 +500,42 @@ void loop() {
         }
     }
 
-    // 2. Poll for Web/Voice Commands every CMD_POLL_INTERVAL_MS
-    if (now - lastPollTime >= CMD_POLL_INTERVAL_MS) {
+    // 2. Poll for AI Voice & Screen Commands (~120ms)
+    if (now - lastPollTime >= CMD_POLL_INTERVAL) {
         lastPollTime = now;
         pollRelayCommands();
     }
 
-    // 3. Handle Timed Manual Driving (Voice navigation: Forward, Left, Right)
+    // 3. Periodic Heartbeat Telemetry (Every 1500ms)
+    if (now - lastTelemetryTime >= TELEMETRY_INTERVAL) {
+        lastTelemetryTime = now;
+        postTelemetry("HEARTBEAT");
+    }
+
+    // 4. Timed Manual Voice Driving ("move forward", "turn left", etc.)
     if (manualDriveActive) {
         if (now >= manualDriveEndTime) {
-            stopMotors();
+            stopRobot();
             manualDriveActive = false;
             curManualLeftSpeed = 0;
             curManualRightSpeed = 0;
-            Serial.println("[MANUAL] Move Duration Finished -> Stopped");
-        } else {
-            // Front collision brake during manual forward movement
-            if (curManualLeftSpeed > 0 && curManualRightSpeed > 0) {
-                long dist = getMinObstacleDistance();
-                if (dist < OBSTACLE_STOP_CM) {
-                    stopMotors();
-                    manualDriveActive = false;
-                    Serial.printf("[SAFETY] Obstacle detected during manual move (%ld cm)! Stopped\n", dist);
-                    postTelemetry("OBSTACLE", ",\"dist\":" + String(dist));
-                }
+            Serial.println("[VOICE MOVE] Duration Finished -> Stopped");
+        } else if (curManualLeftSpeed > 0 && curManualRightSpeed > 0) {
+            // Front safety brake during manual forward movement
+            int frontDist = distanceCM(F_TRIG, F_ECHO);
+            if (frontDist < OBSTACLE_DISTANCE) {
+                stopRobot();
+                manualDriveActive = false;
+                Serial.printf("[SAFETY] Obstacle during manual forward (%d cm)! Stopped\n", frontDist);
+                postTelemetry("OBSTACLE", ",\"dist\":" + String(frontDist));
             }
         }
     }
 
-    // 4. Autonomous Line Following & Destination Tracking
+    // 5. Autonomous Mission Escort (HQ Door -> Theatre)
     if (currentState == STATE_ESCORTING && !manualDriveActive) {
         runEscortStep();
     }
 
-    // 5. Scan NFC Reader for VIP Cards
-    checkNfcReader();
-
-    delay(5); // Small yield for RTOS task scheduler
+    delay(10); // Smooth RTOS scheduling yield
 }

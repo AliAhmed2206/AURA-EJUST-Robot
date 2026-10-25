@@ -3200,8 +3200,20 @@ setInterval(async () => {
           if (data.state.dist && data.state.dist < 990) hwState.dist = data.state.dist;
           if (data.state.robot_state) hwState.state = data.state.robot_state;
           if (data.state.markers) hwState.markers = data.state.markers;
-          if (data.state.event === 'NFC_TAP' && data.state.uid && data.state.uid !== 'NONE' && data.state.uid !== hwState.lastNfcUid) {
-            onEsp32({ event: 'NFC_TAP', uid: data.state.uid });
+          if (data.state.event && data.state.event !== 'NONE') {
+            if (data.state.event === 'NFC_TAP' && data.state.uid && data.state.uid !== 'NONE' && data.state.uid !== hwState.lastNfcUid) {
+              onEsp32({ event: 'NFC_TAP', uid: data.state.uid });
+            } else if (data.state.event === 'ARRIVED' && hwState.state !== 'ARRIVED') {
+              onEsp32({ event: 'ARRIVED', dest: data.state.dest || 'Theatre' });
+            } else if (data.state.event === 'OBSTACLE' && !hwState.lastObstacleActive) {
+              hwState.lastObstacleActive = true;
+              onEsp32({ event: 'OBSTACLE', dist: data.state.dist });
+            } else if (data.state.event === 'CLEAR' && hwState.lastObstacleActive) {
+              hwState.lastObstacleActive = false;
+              onEsp32({ event: 'CLEAR', dist: data.state.dist });
+            } else if (data.state.event === 'MARKER' && data.state.markers !== hwState.markers) {
+              onEsp32({ event: 'MARKER', passed: data.state.markers, target: 1 });
+            }
           }
         }
       } else {
