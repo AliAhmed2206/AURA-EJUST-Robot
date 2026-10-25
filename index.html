@@ -238,9 +238,9 @@ const cfg = {
   bridge: store.get('bridge', ''),
   orKey: store.get('orKey', ''),
   orModel: store.get('orModel', 'google/gemini-2.0-flash-001'),
-  lang: store.get('lang', 'en-US'),
+  lang: store.get('lang', (typeof navigator !== 'undefined' && navigator.language && navigator.language.startsWith('ar')) ? 'ar-EG' : 'en-US'),
   voice: store.get('voice_fast_v2', 'en-US-AvaNeural'),
-  captions: store.get('captions', '0') === '1',
+  captions: store.get('captions', '1') === '1',
   brows: store.get('brows', '1') === '1',
   camPrev: store.get('camPrev', '0') === '1',
 };
@@ -1411,42 +1411,64 @@ async function speak(text, emo = 'NEUTRAL', { holdAfter = 2500, firstAudioB64 = 
   const myId = ++speechId;
   text = (text || '').trim(); if (!text) return;
   ensureAudio();
-  isSpeaking = true; recTaintedBySpeaker = true; lastInterim = ''; currentReply = text; spokenSoFar = '';
+
+  // 1. Mark speaking state and abort recognition during speech so mic doesn't capture own speaker
+  isSpeaking = true;
+  recTaintedBySpeaker = true;
+  lastInterim = '';
+  currentReply = text;
+  spokenSoFar = '';
   updateMicBadge('speaking');
 
-  const ctrl = new AbortController(); speak.ctrl = ctrl;
-  const sentences = (clauses && clauses.length) ? clauses : splitSentences(text);
-
-  // If no bridge is active (e.g. running on GitHub Pages / Vercel without tunnel), speak locally with zero delay
-  const jobs = sentences.map((s, idx) => {
-    if (!hasBridge()) return Promise.resolve(null);
-    if (idx === 0 && firstAudioB64) {
-      return decodeBase64Audio(firstAudioB64).catch(() => fetchVoice(s, ctrl.signal)).catch(() => null);
-    }
-    return fetchVoice(s, ctrl.signal).catch(e => null);
-  });
-
-  for (let i = 0; i < sentences.length; i++) {
-    const buf = await jobs[i];
-    if (myId !== speechId) return; // interrupted
-    if (i === 0) {
-      speakingAnim = true;
-      setEmotion(emo);
-      caption(text, false);
-    }
-    recTaintedBySpeaker = true;
-    if (buf) await playBuffer(buf); else await speakFallback(sentences[i]);
-    if (myId !== speechId) return;
-    spokenSoFar += (spokenSoFar ? ' ' : '') + sentences[i];
+  if (rec && recRunning) {
+    try { rec.abort(); } catch (e) {}
+    recRunning = false;
   }
+
+  const ctrl = new AbortController(); speak.ctrl = ctrl;
+
+  // If no bridge is active (running as client PWA on Vercel/GitHub Pages):
+  // Play the full text in ONE smooth natural utterance
+  if (!hasBridge()) {
+    speakingAnim = true;
+    setEmotion(emo);
+    caption(text, false);
+    await speakFallback(text);
+  } else {
+    // Neural streaming chunks when connected to local bridge
+    const sentences = (clauses && clauses.length) ? clauses : splitSentences(text);
+    const jobs = sentences.map((s, idx) => {
+      if (idx === 0 && firstAudioB64) {
+        return decodeBase64Audio(firstAudioB64).catch(() => fetchVoice(s, ctrl.signal)).catch(() => null);
+      }
+      return fetchVoice(s, ctrl.signal).catch(e => null);
+    });
+
+    for (let i = 0; i < sentences.length; i++) {
+      const buf = await jobs[i];
+      if (myId !== speechId) return;
+      if (i === 0) {
+        speakingAnim = true;
+        setEmotion(emo);
+        caption(text, false);
+      }
+      if (buf) await playBuffer(buf); else await speakFallback(sentences[i]);
+      if (myId !== speechId) return;
+      spokenSoFar += (spokenSoFar ? ' ' : '') + sentences[i];
+    }
+  }
+
   speakingAnim = false;
   lastSpeechEnd = performance.now();
   if (myId === speechId) {
     setTimeout(() => { if (myId === speechId && !thinking) setEmotion(baseState); }, holdAfter);
   }
+
+  // 2. CRITICAL: Clear speaking state, reset taint, and restart clean listening after room echo clears
   isSpeaking = false;
+  recTaintedBySpeaker = false;
   updateMicBadge('listening');
-  scheduleRestart(100);
+  scheduleRestart(300);
 }
 
 function stopSpeaking() {
@@ -1455,7 +1477,10 @@ function stopSpeaking() {
   if (currentSource) { try { currentSource.onended = null; currentSource.stop(); } catch (e) {} currentSource = null; }
   if ('speechSynthesis' in window) try { speechSynthesis.cancel(); } catch (e) {}
   if (isSpeaking) lastSpeechEnd = performance.now();
-  isSpeaking = false; speakingAnim = false;
+  isSpeaking = false;
+  speakingAnim = false;
+  recTaintedBySpeaker = false;
+  updateMicBadge('listening');
 }
 
 let captionFadeTimer = null;
@@ -1564,44 +1589,45 @@ const HARD_STOP_RE = /\b(hard stop|emergency stop|halt|freeze now|brake)\b|(اق
 
 function getOfflineReply(text) {
   const ar = isArabic(text);
-  const t = text.toLowerCase();
-  if (/(who are you|what is your name)|مين إنتي|مين انتي|اسمك إيه|اسمك ايه/i.test(t)) {
+  const t = (text || '').toLowerCase();
+
+  if (/(who are you|what is your name|your name|identity|who r u)/i.test(t) || /(مين إنتي|مين انتي|اسمك إيه|اسمك ايه|من انت|عرفينا بنفسك)/i.test(t)) {
     return {
       text: ar ? 'أنا أورا، روبوت الاستقبال لفرع IEEE RAS في الجامعة المصرية اليابانية!' : "I'm AURA, the humanoid reception robot of the IEEE RAS Student Branch at E-JUST!",
       emotion: 'HAPPY', action: null
     };
   }
-  if (/(president|who is the head|who runs|el sabbagh|sabbagh|amr adly)|مين رئيس الجامعة|رئيس الجامعة|أحمد الصباغ|احمد الصباغ|الصباغ|عمرو عدلي/i.test(t)) {
+  if (/(president|head of|who runs|el sabbagh|sabbagh|amr adly)/i.test(t) || /(رئيس الجامعة|أحمد الصباغ|احمد الصباغ|الصباغ|عمرو عدلي)/i.test(t)) {
     return {
       text: ar ? 'رئيس الجامعة المصرية اليابانية هو الأستاذ الدكتور أحمد الصباغ، شرف كبير وجوده معنا اليوم في قمة IEEE RAS!' : "The President of E-JUST is Prof. Ahmed El-Sabbagh. It's an honor to welcome him to the IEEE RAS MENA Summit!",
       emotion: 'HAPPY', action: null
     };
   }
-  if (/(what is ieee|ieee ras|summit|mena)|إيه هو ieee|قمة ieee|يعني إيه ieee/i.test(t)) {
+  if (/(ieee|summit|mena|robotics|conference)/i.test(t) || /(إيه هو ieee|قمة ieee|مؤتمر|قمة|يعني إيه ieee)/i.test(t)) {
     return {
       text: ar ? 'دي قمة IEEE RAS لمنطقة الشرق الأوسط وشمال أفريقيا، بنستعرض فيها أحدث أبحاث الروبوتات والذكاء الاصطناعي!' : 'This is the IEEE RAS MENA Summit, showcasing cutting-edge robotics and AI here at E-JUST!',
       emotion: 'HAPPY', action: null
     };
   }
-  if (/(what can you do|features|abilities)|بتعملي إيه|تقدري تعملي إيه|إيه وظيفتك/i.test(t)) {
+  if (/(what can you do|features|abilities|skills|help)/i.test(t) || /(بتعملي إيه|تقدري تعملي إيه|وظيفتك|تساعديني|امكانياتك)/i.test(t)) {
     return {
       text: ar ? 'أقدر أرحب بضيوف الـ VIP، وأقرأ كروت الـ NFC، وأوصلكم للقاعات عبر تتبع المسار، وأتحرك بأوامر الصوت، وأتكلم معاكم!' : 'I can welcome VIP guests, verify university NFC cards, escort you to summit halls, drive via voice commands, and chat with you!',
       emotion: 'HAPPY', action: null
     };
   }
-  if (/(thank you|thanks|great job|awesome)|شكرا|شكراً|تسلمي|شاطرة|برافو/i.test(t)) {
+  if (/(thank you|thanks|great job|awesome|good job|bravo)/i.test(t) || /(شكرا|شكراً|تسلمي|شاطرة|برافو|عاش|شكرا جزيلا)/i.test(t)) {
     return {
       text: ar ? 'العفو! تحت أمرك، واستمتع بيومك في قمة IEEE RAS بالجامعة!' : "You're very welcome! Enjoy your time at the IEEE RAS MENA Summit!",
       emotion: 'LOVE', action: null
     };
   }
-  if (/(hello|hi|hey|good morning|welcome)|أهلا|اهلاً|مرحبا|صباح الخير|سلام|ازيك|إزيك/i.test(t)) {
+  if (/(hello|hi|hey|good morning|welcome|howdy|sup)/i.test(t) || /(أهلا|اهلاً|مرحبا|صباح الخير|سلام|ازيك|إزيك|عاملة إيه)/i.test(t)) {
     return {
       text: ar ? 'أهلاً بيك! نورت قمة IEEE RAS في الجامعة المصرية اليابانية، أقدر أساعدك في إيه؟' : 'Hi there! Welcome to the IEEE RAS MENA Summit at E-JUST. How can I help you today?',
       emotion: 'HAPPY', action: null
     };
   }
-  if (/(how are you|how do you do)|عاملة إيه|اخبارك|إيه الأخبار/i.test(t)) {
+  if (/(how are you|how do you do)/i.test(t) || /(عاملة إيه|اخبارك|إيه الأخبار|كيف حالك)/i.test(t)) {
     return {
       text: ar ? 'أنا بخير ومتحمسة جدا لقمة الروبوتات اليوم! تحب تروح أي قاعة؟' : "I'm doing fantastic and thrilled for the robotics summit! Would you like directions to any hall?",
       emotion: 'HAPPY', action: null
@@ -1814,7 +1840,7 @@ function commitUserUtterance(text) {
   lastInterim = '';
   if (!text) return;
   // Double-safety: never commit an utterance while AURA is speaking or within 500ms of speaker stop
-  if (isSpeaking || (performance.now() - lastSpeechEnd < 500)) return;
+  if (isSpeaking || (performance.now() - lastSpeechEnd < 250)) return;
   if (thinking) {
     thinking = false;
     try { chatCtrl && chatCtrl.abort(); } catch (e) {}
@@ -1855,7 +1881,7 @@ function initRecognition() {
     recRunning = true;
     lastInterim = '';
     clearTimeout(interimCommitTimer);
-    recTaintedBySpeaker = isSpeaking || (performance.now() - lastSpeechEnd < 450);
+    recTaintedBySpeaker = isSpeaking;
     if (!isSpeaking) updateMicBadge('listening');
   };
 
@@ -1873,13 +1899,10 @@ function initRecognition() {
 
     // If AURA is speaking or this recognition session started while her speaker was active:
     // ONLY allow explicit barge-in keywords (stop, wait, hey aura, استنى, بس, etc.) and NEVER send speaker audio to chat!
-    if (isSpeaking || recTaintedBySpeaker || (performance.now() - lastSpeechEnd < 650)) {
-      recTaintedBySpeaker = true;
+    if (isSpeaking || (performance.now() - lastSpeechEnd < 220)) {
       lastInterim = '';
       clearTimeout(interimCommitTimer);
-      if (STRICT_BARGE_RE.test(rawHeard)) {
-        bargeIn();
-      }
+      bargeIn();
       return;
     }
 
@@ -1918,7 +1941,7 @@ function initRecognition() {
     clearTimeout(interimCommitTimer);
     if (lastInterim && lastInterim.length >= 3) {
       interimCommitTimer = setTimeout(() => {
-        if (!isSpeaking && !recTaintedBySpeaker && (performance.now() - lastSpeechEnd >= 650) && lastInterim && lastInterim.trim().length >= 3) {
+        if (!isSpeaking && (performance.now() - lastSpeechEnd >= 220) && lastInterim && lastInterim.trim().length >= 2) {
           log('[NOISE-ADAPTIVE] Fast-committing stable speech in noisy hall:', lastInterim);
           const toSend = lastInterim.trim();
           lastInterim = '';
@@ -1950,7 +1973,7 @@ function initRecognition() {
     recRunning = false;
     clearTimeout(interimCommitTimer);
     // Only commit leftover interim speech if the session was 100% untainted by AURA's speaker
-    if (!recTaintedBySpeaker && !isSpeaking && (performance.now() - lastSpeechEnd >= 650) && lastInterim && lastInterim.trim().length >= 2) {
+    if (!isSpeaking && (performance.now() - lastSpeechEnd >= 220) && lastInterim && lastInterim.trim().length >= 2) {
       const toSend = lastInterim.trim();
       lastInterim = '';
       caption(toSend, true);
@@ -1979,7 +2002,7 @@ function startRec() {
 }
 
 function setLang(l) { cfg.lang = l; store.set('lang', l); if (rec) { try { rec.abort(); } catch (e) {} } }
-setInterval(() => { if (awake && !recRunning) startRec(); }, 1800);   // watchdog: never stay deaf
+setInterval(() => { if (awake && !recRunning && !isSpeaking) startRec(); }, 1200);   // watchdog: never stay deaf
 
 /* =============================================================================
    5. EYES — camera face tracking (MediaPipe, with a motion/skin fallback)
@@ -2555,10 +2578,10 @@ async function wake() {
   updateLangBadge();
   updateMicBadge('listening');
   setTimeout(() => {
-    const t = cfg.lang === 'ar-EG' ? 'أهلاً! أنا أورا. نورت قمة IEEE RAS في الجامعة المصرية اليابانية!' : "Hi! I'm AURA. Welcome to the IEEE RAS MENA Summit at E-JUST!";
+    const t = cfg.lang === 'ar-EG' ? 'أهلاً! أنا أورا، أقدر أساعدك في إيه؟' : "Hi! I'm AURA, how can I help you?";
     history.push({ role: 'model', text: t });
     speak(t, 'HAPPY');
-  }, 450);
+  }, 350);
 }
 
 // Top Bar & Camera Action Handlers
