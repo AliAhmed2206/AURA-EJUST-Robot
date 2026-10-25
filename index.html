@@ -162,7 +162,12 @@
       <label>Google Gemini API Key (<a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent,#00d2ff);text-decoration:underline;">Get Free Key from Google AI Studio</a>)</label>
       <input id="sGeminiKey" type="password" placeholder="AIzaSy..." />
       <label>Gemini Model</label>
-      <input id="sGeminiModel" value="gemini-2.0-flash" placeholder="gemini-2.0-flash" />
+      <input id="sGeminiModel" list="geminiModelList" value="gemini-2.5-flash" placeholder="gemini-2.5-flash" />
+      <datalist id="geminiModelList">
+        <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recommended - Ultrafast & Multimodal)</option>
+        <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Reasoning)</option>
+        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+      </datalist>
     </div>
     <div id="cfgBridge">
       <label>Bridge URL (leave empty = this page's address)</label>
@@ -251,7 +256,7 @@ const cfg = {
   style: urlStyle || store.get('style_default_v2', 'nordic'),
   provider: store.get('provider', 'relay'),
   geminiKey: store.get('geminiKey', ''),
-  geminiModel: store.get('geminiModel', 'gemini-2.0-flash'),
+  geminiModel: store.get('geminiModel', 'gemini-2.5-flash'),
   bridge: store.get('bridge', ''),
   orKey: store.get('orKey', ''),
   orModel: store.get('orModel', 'google/gemini-2.0-flash-001'),
@@ -450,6 +455,15 @@ function drawNordicCapsule(now) {
     if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55)) {
       ctx.lineWidth = r * 0.24; ctx.strokeStyle = col; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.arc(0, r * 0.2, r * 0.65, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else if (emotion === 'SLEEP' || (!awake && live.closed > 0.4)) {
+      // Cute sleeping / resting curved eyelids with gentle breathing glow
+      const sleepBreathe = Math.sin(now * 0.002) * 0.18;
+      ctx.lineWidth = r * 0.20; ctx.strokeStyle = col; ctx.lineCap = 'round';
+      ctx.shadowColor = col;
+      ctx.shadowBlur = r * (0.45 + sleepBreathe) * (live.glow || 1);
+      ctx.beginPath();
+      ctx.arc(0, -r * 0.08, r * 0.65, Math.PI * 0.18, Math.PI * 0.82);
+      ctx.stroke();
     } else {
       const rad = Math.min(ph / 2, pw / 2);
       ctx.beginPath();
@@ -520,6 +534,11 @@ function drawPixarSoul(now) {
       ctx.strokeStyle = '#00e5ff';
       ctx.lineWidth = eyeR * 0.24; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.arc(0, eyeR * 0.25, eyeR * 0.65, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else if (emotion === 'SLEEP' || (!awake && live.closed > 0.4)) {
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = eyeR * 0.20; ctx.lineCap = 'round';
+      ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = eyeR * (0.45 + Math.sin(now * 0.002) * 0.15);
+      ctx.beginPath(); ctx.arc(0, -eyeR * 0.08, eyeR * 0.65, Math.PI * 0.18, Math.PI * 0.82); ctx.stroke();
     } else {
       const bH = Math.max(0.08, 1 - b * 0.92);
       ctx.save();
@@ -593,6 +612,11 @@ function drawCyberAperture(now) {
       ctx.strokeStyle = '#00f7ff';
       ctx.lineWidth = r * 0.22; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.arc(0, r * 0.25, r * 0.68, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else if (emotion === 'SLEEP' || (!awake && live.closed > 0.4)) {
+      ctx.strokeStyle = '#00f7ff';
+      ctx.lineWidth = r * 0.20; ctx.lineCap = 'round';
+      ctx.shadowColor = '#00f7ff'; ctx.shadowBlur = r * (0.45 + Math.sin(now * 0.002) * 0.15);
+      ctx.beginPath(); ctx.arc(0, -r * 0.08, r * 0.65, Math.PI * 0.18, Math.PI * 0.82); ctx.stroke();
     } else {
       ctx.save();
       ctx.scale(1, Math.max(0.08, 1 - b * 0.92));
@@ -645,13 +669,16 @@ function drawJapanStarMecha(now) {
     ctx.save();
     ctx.translate(ex, 0);
 
-    const scY = Math.max(0.08, 1 - b * 0.92);
-    ctx.scale(1, scY);
-
     if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55)) {
       ctx.strokeStyle = '#ff3388'; ctx.lineWidth = r * 0.22; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.arc(0, r * 0.25, r * 0.65, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else if (emotion === 'SLEEP' || (!awake && live.closed > 0.4)) {
+      ctx.strokeStyle = '#ff3388'; ctx.lineWidth = r * 0.20; ctx.lineCap = 'round';
+      ctx.shadowColor = '#ff3388'; ctx.shadowBlur = r * (0.45 + Math.sin(now * 0.002) * 0.15);
+      ctx.beginPath(); ctx.arc(0, -r * 0.08, r * 0.65, Math.PI * 0.18, Math.PI * 0.82); ctx.stroke();
     } else {
+      const scY = Math.max(0.08, 1 - b * 0.92);
+      ctx.scale(1, scY);
       const eyeG = ctx.createLinearGradient(0, -r, 0, r);
       eyeG.addColorStop(0, '#ff4099'); eyeG.addColorStop(0.4, '#8833ff'); eyeG.addColorStop(1, '#00d0ff');
       ctx.shadowColor = '#ff4099'; ctx.shadowBlur = r * 0.4;
@@ -759,6 +786,10 @@ function drawCozmoFace(now) {
     if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55)) {
       ctx.strokeStyle = col; ctx.lineWidth = r * 0.22; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.arc(0, r * 0.25, r * 0.65, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else if (emotion === 'SLEEP' || (!awake && live.closed > 0.4)) {
+      ctx.strokeStyle = col; ctx.lineWidth = r * 0.20; ctx.lineCap = 'round';
+      ctx.shadowBlur = r * (0.45 + Math.sin(now * 0.002) * 0.15);
+      ctx.beginPath(); ctx.arc(0, -r * 0.08, r * 0.65, Math.PI * 0.18, Math.PI * 0.82); ctx.stroke();
     } else if (live.love > 0.5) {
       heart(0, r * 0.1, r * 0.95);
     } else {
@@ -813,6 +844,10 @@ function drawEveFace(now) {
     if (live.happyArc > 0.55 || (side === 'R' && live.wink > 0.55)) {
       ctx.strokeStyle = col; ctx.lineWidth = r * 0.18; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.arc(0, r * 0.2, r * 0.72, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else if (emotion === 'SLEEP' || (!awake && live.closed > 0.4)) {
+      ctx.strokeStyle = col; ctx.lineWidth = r * 0.20; ctx.lineCap = 'round';
+      ctx.shadowBlur = r * (0.45 + Math.sin(now * 0.002) * 0.15);
+      ctx.beginPath(); ctx.arc(0, -r * 0.08, r * 0.65, Math.PI * 0.18, Math.PI * 0.82); ctx.stroke();
     } else {
       const rx = r * 0.95, ry = Math.max(r * 0.08, r * 0.68 * (1 - b * 0.92) * (live.asym > 0.01 && side === 'R' ? 0.78 : 1));
       const g = ctx.createRadialGradient(0, -ry * 0.2, ry * 0.1, 0, 0, rx);
@@ -1124,7 +1159,7 @@ function drawEye(x, y, r, side, blinkAmt, now) {
 
   // 2. SLEEP or full blink closure: calm glowing sleeping arc
   const closeAmt = Math.max(live.closed || 0, blinkAmt);
-  if (closeAmt > 0.92) {
+  if (emotion === 'SLEEP' || (!awake && live.closed > 0.4) || closeAmt > 0.92) {
     drawBrow();
     ctx.strokeStyle = 'rgba(0,229,255,0.75)';
     ctx.lineCap = 'round';
@@ -2581,8 +2616,7 @@ async function attachBleGatt(dev) {
     await tx.startNotifications();
     tx.addEventListener('characteristicvaluechanged', (ev) => {
       bleBuf += new TextDecoder().decode(ev.target.value);
-      const lines = bleBuf.split('
-'); bleBuf = lines.pop();
+      const lines = bleBuf.split('\n'); bleBuf = lines.pop();
       lines.map(l => l.trim()).filter(Boolean).forEach(onEsp32);
     });
     hwState.connected = true;
@@ -2855,6 +2889,11 @@ canvas.addEventListener('pointerup', () => {
   lastTap = now;
 });
 canvas.addEventListener('pointerleave', () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
+document.body.addEventListener('pointerup', (e) => {
+  if (!awake && !e.target.closest('#settings') && !e.target.closest('#topBar')) {
+    wake();
+  }
+});
 
 function updateBrainSettingsUi() {
   const p = $('sProvider') ? $('sProvider').value : 'gemini';
@@ -2866,7 +2905,7 @@ window.updateBrainSettingsUi = updateBrainSettingsUi;
 
 function openSettings() {
   $('sStyle').value = cfg.style || 'nordic';
-  $('sProvider').value = cfg.provider || 'gemini'; if ($('sGeminiKey')) $('sGeminiKey').value = cfg.geminiKey || ''; if ($('sGeminiModel')) $('sGeminiModel').value = cfg.geminiModel || 'gemini-2.0-flash'; updateBrainSettingsUi(); $('sBridge').value = cfg.bridge; $('sOrKey').value = cfg.orKey; $('sOrModel').value = cfg.orModel;
+  $('sProvider').value = cfg.provider || 'gemini'; if ($('sGeminiKey')) $('sGeminiKey').value = cfg.geminiKey || ''; if ($('sGeminiModel')) $('sGeminiModel').value = cfg.geminiModel || 'gemini-2.5-flash'; updateBrainSettingsUi(); $('sBridge').value = cfg.bridge; $('sOrKey').value = cfg.orKey; $('sOrModel').value = cfg.orModel;
   $('sLang').value = cfg.lang; $('sVoice').value = cfg.voice; $('sCaptions').checked = cfg.captions; $('sBrows').checked = cfg.brows; $('sCamPrev').checked = cfg.camPrev;
   $('sAllowAnyNfc').checked = hwState.allowAnyNfc;
   updateHwUi();
@@ -2874,7 +2913,7 @@ function openSettings() {
 }
 $('bSave').onclick = () => {
   cfg.style = $('sStyle').value;
-  cfg.provider = $('sProvider').value; cfg.geminiKey = $('sGeminiKey') ? $('sGeminiKey').value.trim() : ''; cfg.geminiModel = ($('sGeminiModel') && $('sGeminiModel').value.trim()) || 'gemini-2.0-flash'; cfg.bridge = $('sBridge').value.trim(); cfg.orKey = $('sOrKey').value.trim(); cfg.orModel = $('sOrModel').value.trim() || cfg.orModel;
+  cfg.provider = $('sProvider').value; cfg.geminiKey = $('sGeminiKey') ? $('sGeminiKey').value.trim() : ''; cfg.geminiModel = ($('sGeminiModel') && $('sGeminiModel').value.trim()) || 'gemini-2.5-flash'; cfg.bridge = $('sBridge').value.trim(); cfg.orKey = $('sOrKey').value.trim(); cfg.orModel = $('sOrModel').value.trim() || cfg.orModel;
   cfg.voice = $('sVoice').value; cfg.captions = $('sCaptions').checked; cfg.brows = $('sBrows').checked; cfg.camPrev = $('sCamPrev').checked;
   hwState.allowAnyNfc = $('sAllowAnyNfc').checked;
   store.set('allow_any_nfc', hwState.allowAnyNfc ? '1' : '0');
