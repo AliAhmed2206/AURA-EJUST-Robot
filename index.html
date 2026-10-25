@@ -149,16 +149,28 @@
       <option value="kaomoji">10. Neon Kaomoji Symbols (^ ‿ ^)</option>
     </select>
     <label>Brain</label>
-    <select id="sProvider">
-      <option value="relay">Antigravity PC Bridge (recommended)</option>
-      <option value="openrouter">OpenRouter (direct from phone)</option>
+    <select id="sProvider" onchange="updateBrainSettingsUi()">
+      <option value="gemini">Google Gemini (Direct Cloud AI - Recommended)</option>
+      <option value="relay">Antigravity PC Bridge (Local / Tunnel)</option>
+      <option value="openrouter">OpenRouter (Claude, Llama, DeepSeek)</option>
+      <option value="offline">Smart Offline Brain (Embedded Rules)</option>
     </select>
-    <label>Bridge URL (leave empty = this page's address)</label>
-    <input id="sBridge" placeholder="https://xxxx.trycloudflare.com" />
-    <label>OpenRouter API key</label>
-    <input id="sOrKey" placeholder="sk-or-..." />
-    <label>OpenRouter model</label>
-    <input id="sOrModel" placeholder="google/gemini-2.0-flash-001" />
+    <div id="cfgGemini">
+      <label>Google Gemini API Key (<a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent,#00d2ff);text-decoration:underline;">Get Free Key from Google AI Studio</a>)</label>
+      <input id="sGeminiKey" type="password" placeholder="AIzaSy..." />
+      <label>Gemini Model</label>
+      <input id="sGeminiModel" value="gemini-2.0-flash" placeholder="gemini-2.0-flash" />
+    </div>
+    <div id="cfgBridge">
+      <label>Bridge URL (leave empty = this page's address)</label>
+      <input id="sBridge" placeholder="https://xxxx.trycloudflare.com" />
+    </div>
+    <div id="cfgOpenRouter">
+      <label>OpenRouter API key</label>
+      <input id="sOrKey" placeholder="sk-or-..." />
+      <label>OpenRouter model</label>
+      <input id="sOrModel" placeholder="google/gemini-2.0-flash-001" />
+    </div>
     <label>Listening language</label>
     <select id="sLang">
       <option value="en-US">English</option>
@@ -234,7 +246,9 @@ const store = {
 const urlStyle = new URLSearchParams(location.search).get('style');
 const cfg = {
   style: urlStyle || store.get('style_default_v2', 'nordic'),
-  provider: store.get('provider', 'relay'),
+  provider: store.get('provider', 'gemini'),
+  geminiKey: store.get('geminiKey', ''),
+  geminiModel: store.get('geminiModel', 'gemini-2.0-flash'),
   bridge: store.get('bridge', ''),
   orKey: store.get('orKey', ''),
   orModel: store.get('orModel', 'google/gemini-2.0-flash-001'),
@@ -1537,7 +1551,54 @@ async function askBrain(prompt, context) {
   const hwCtx = getHardwareContextString();
   const fullContext = [hwCtx, context].filter(Boolean).join(' | ');
   try {
+    // Tier 1: Direct Google Gemini REST API (Official Google AI Studio Endpoint over HTTPS)
+    const effectiveGeminiKey = cfg.geminiKey && cfg.geminiKey.trim();
+    if (effectiveGeminiKey && (cfg.provider === 'gemini' || cfg.provider === 'relay' || !cfg.provider)) {
+      log('Querying Google Gemini API directly over HTTPS...');
+      const userText = fullContext ? `(${fullContext})\n${prompt}` : prompt;
+      const parts = [];
+      if (imgB64) {
+        const cleanB64 = imgB64.replace(/^data:image\/\w+;base64,/, '');
+        parts.push({ inlineData: { mimeType: 'image/jpeg', data: cleanB64 } });
+      }
+      parts.push({ text: userText });
+
+      const contents = [
+        ...history.slice(-8).map(h => ({
+          role: h.role === 'model' ? 'model' : 'user',
+          parts: [{ text: h.text }]
+        })),
+        { role: 'user', parts }
+      ];
+
+      const model = cfg.geminiModel || 'gemini-2.0-flash';
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${effectiveGeminiKey}`;
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents,
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 200
+          }
+        })
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Gemini API error (${res.status}): ${errText.slice(0, 100)}`);
+      }
+      const data = await res.json();
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return parseReply(rawText);
+    }
+
+    // Tier 2: OpenRouter
     if (cfg.provider === 'openrouter' && cfg.orKey) {
+      log('Querying OpenRouter API...');
       const userText = fullContext ? `(${fullContext})\n${prompt}` : prompt;
       const userContent = imgB64
         ? [{ type: 'text', text: userText }, { type: 'image_url', image_url: { url: imgB64 } }]
@@ -1554,23 +1615,52 @@ async function askBrain(prompt, context) {
       const j = await res.json();
       return parseReply(j.choices?.[0]?.message?.content || '');
     }
-    if (!hasBridge()) {
-      return getOfflineReply(prompt);
+
+    // Tier 3: Same-Origin Vercel Serverless Function /api/chat
+    if (location.hostname.endsWith('vercel.app')) {
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST', signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, history: history.slice(-8), context: fullContext || null, image_b64: imgB64 })
+        });
+        if (res.ok) {
+          const j = await res.json();
+          if (j.reply) {
+            return {
+              text: j.reply,
+              emotion: (j.emotion || 'HAPPY').toUpperCase(),
+              action: j.action || null
+            };
+          }
+        }
+      } catch (e) {
+        log('Vercel serverless /api/chat check:', e.message);
+      }
     }
-    const res = await fetch(`${bridgeBase()}/api/chat`, {
-      method: 'POST', signal,
-      headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS },
-      body: JSON.stringify({ prompt, history: history.slice(-12), context: fullContext || null, voice: cfg.voice, image_b64: imgB64 }),
-    });
-    if (!res.ok) throw new Error('bridge ' + res.status);
-    const j = await res.json();
-    return {
-      text: j.reply,
-      emotion: (j.emotion || 'NEUTRAL').toUpperCase(),
-      action: j.action || null,
-      clauses: j.clauses || null,
-      firstAudioB64: j.first_audio_b64 || null,
-    };
+
+    // Tier 4: Local Bridge (if running locally or connected to Cloudflare tunnel)
+    if (hasBridge()) {
+      const res = await fetch(`${bridgeBase()}/api/chat`, {
+        method: 'POST', signal,
+        headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS },
+        body: JSON.stringify({ prompt, history: history.slice(-12), context: fullContext || null, voice: cfg.voice, image_b64: imgB64 }),
+      });
+      if (res.ok) {
+        const j = await res.json();
+        return {
+          text: j.reply,
+          emotion: (j.emotion || 'NEUTRAL').toUpperCase(),
+          action: j.action || null,
+          clauses: j.clauses || null,
+          firstAudioB64: j.first_audio_b64 || null,
+        };
+      }
+    }
+
+    // Tier 5: Comprehensive Smart Offline Brain (Cognitive delay + 30+ intents + rotating fallbacks)
+    log('No cloud bridge detected; utilizing Smart Offline Engine...');
+    return await getOfflineReply(prompt);
   } finally { clearTimeout(timeout); }
 }
 
@@ -1587,55 +1677,163 @@ const TURN_LEFT_RE = /\b(turn left|spin left|steer left|rotate left)\b|(حودي
 const TURN_AROUND_RE = /\b(turn around|spin around|rotate 180)\b|(لفي\s*ورا|دوري\s*للخلف|لفي\s*180)/i;
 const HARD_STOP_RE = /\b(hard stop|emergency stop|halt|freeze now|brake)\b|(اقفي\s*حالا|فرملي|وقفي\s*حالا|ثبات|فرملة)/i;
 
-function getOfflineReply(text) {
+async function getOfflineReply(text) {
+  // Realistic cognitive cadence: 550ms thinking state
+  await new Promise(r => setTimeout(r, 550));
   const ar = isArabic(text);
-  const t = (text || '').toLowerCase();
+  const t = (text || '').toLowerCase().trim();
 
-  if (/(who are you|what is your name|your name|identity|who r u)/i.test(t) || /(مين إنتي|مين انتي|اسمك إيه|اسمك ايه|من انت|عرفينا بنفسك)/i.test(t)) {
+  // 1. Identity & Name
+  if (/(who are you|what is your name|your name|identity|who r u|what are you)/i.test(t) || /(مين إنتي|مين انتي|اسمك إيه|اسمك ايه|من انت|عرفينا بنفسك|إنت مين|انت مين)/i.test(t)) {
     return {
-      text: ar ? 'أنا أورا، روبوت الاستقبال لفرع IEEE RAS في الجامعة المصرية اليابانية!' : "I'm AURA, the humanoid reception robot of the IEEE RAS Student Branch at E-JUST!",
+      text: ar ? 'أنا أورا، روبوت الاستقبال البشري الذكي لفرع IEEE RAS في الجامعة المصرية اليابانية للعلوم والتكنولوجيا!' : "I'm AURA, the humanoid VIP reception robot engineered by the IEEE RAS Student Branch at E-JUST!",
       emotion: 'HAPPY', action: null
     };
   }
+
+  // 2. Creators & Engineering
+  if (/(who made you|who built you|how were you made|who designed you|who created you|your team)/i.test(t) || /(مين عملك|مين صنعك|مين برمجك|اتعملتي إزاي|مين صممك|مين طورك)/i.test(t)) {
+    return {
+      text: ar ? 'صمموني ونفذوني من الصفر طلاب وخريجي فرع IEEE RAS في الجامعة المصرية اليابانية، بمحركات تحكم وذكاء اصطناعي كامل!' : "I was engineered and coded from the ground up by student innovators of the IEEE RAS Branch at E-JUST!",
+      emotion: 'HAPPY', action: null
+    };
+  }
+
+  // 3. Hearing & Audio Presence Check
+  if (/(can you hear me|are you listening|do you hear me|can you understand)/i.test(t) || /(سامعاني|سامعني|بتسمعي|أنا سامعك|سامعة صوتي|سامعانا)/i.test(t)) {
+    return {
+      text: ar ? 'أيوة طبعاً سامعاك بوضوح جداً! ميكروفوني شغال ومتبرمج يلتقط الصوت بدقة وسط زحمة القمة، اتفضل أنا معاك.' : "Yes, I hear you loud and clear! My microphone is tuned for this lively summit hall. What's on your mind?",
+      emotion: 'HAPPY', action: null
+    };
+  }
+
+  // 4. Vision & Camera
+  if (/(can you see me|what do you see|do you have eyes|look at me|where are your eyes)/i.test(t) || /(شايفاني|شايفني|بتشوفي|عندك كاميرا|شايفة إيه|بصي عليا|شايفانا)/i.test(t)) {
+    return {
+      text: ar ? 'أيوة شايفاك قدامي حالا من كاميرتي المدمجة! مبسوطة جداً إني شايفاك منور القمة النهارده.' : "Yes! I can see you through my integrated camera sensor right now. It is great to see you in person!",
+      emotion: 'WINK', action: null
+    };
+  }
+
+  // 5. University President
   if (/(president|head of|who runs|el sabbagh|sabbagh|amr adly)/i.test(t) || /(رئيس الجامعة|أحمد الصباغ|احمد الصباغ|الصباغ|عمرو عدلي)/i.test(t)) {
     return {
-      text: ar ? 'رئيس الجامعة المصرية اليابانية هو الأستاذ الدكتور أحمد الصباغ، شرف كبير وجوده معنا اليوم في قمة IEEE RAS!' : "The President of E-JUST is Prof. Ahmed El-Sabbagh. It's an honor to welcome him to the IEEE RAS MENA Summit!",
+      text: ar ? 'رئيس الجامعة المصرية اليابانية هو الأستاذ الدكتور أحمد الصباغ، شرف كبير وجوده ورعايته لقمة IEEE RAS!' : "The President of E-JUST is Prof. Ahmed El-Sabbagh. It's an honor to welcome him to the IEEE RAS MENA Summit!",
       emotion: 'HAPPY', action: null
     };
   }
-  if (/(ieee|summit|mena|robotics|conference)/i.test(t) || /(إيه هو ieee|قمة ieee|مؤتمر|قمة|يعني إيه ieee)/i.test(t)) {
+
+  // 6. University (E-JUST)
+  if (/(what is ejust|tell me about e-just|about university|alexandria university)/i.test(t) || /(إيه هي إيجست|الجامعة المصرية اليابانية|جامعة إيجست|معلومات عن الجامعة|إيجست)/i.test(t)) {
     return {
-      text: ar ? 'دي قمة IEEE RAS لمنطقة الشرق الأوسط وشمال أفريقيا، بنستعرض فيها أحدث أبحاث الروبوتات والذكاء الاصطناعي!' : 'This is the IEEE RAS MENA Summit, showcasing cutting-edge robotics and AI here at E-JUST!',
+      text: ar ? 'الجامعة المصرية اليابانية للعلوم والتكنولوجيا صرح علمي رائد في برج العرب الجديدة، بيجمع التميز الياباني والابتكار المصري!' : 'E-JUST is the Egypt-Japan University of Science and Technology, a top research university partnering with Japan to lead AI and robotics.',
       emotion: 'HAPPY', action: null
     };
   }
-  if (/(what can you do|features|abilities|skills|help)/i.test(t) || /(بتعملي إيه|تقدري تعملي إيه|وظيفتك|تساعديني|امكانياتك)/i.test(t)) {
+
+  // 7. Summit & IEEE RAS
+  if (/(ieee|summit|mena|robotics conference)/i.test(t) || /(إيه هو ieee|قمة ieee|مؤتمر|قمة الشرق الأوسط|يعني إيه ieee)/i.test(t)) {
     return {
-      text: ar ? 'أقدر أرحب بضيوف الـ VIP، وأقرأ كروت الـ NFC، وأوصلكم للقاعات عبر تتبع المسار، وأتحرك بأوامر الصوت، وأتكلم معاكم!' : 'I can welcome VIP guests, verify university NFC cards, escort you to summit halls, drive via voice commands, and chat with you!',
+      text: ar ? 'دي قمة IEEE RAS لمنطقة الشرق الأوسط وشمال أفريقيا، بنستعرض فيها أحدث أبحاث الروبوتات والذكاء الاصطناعي هنا في إيجست!' : 'This is the IEEE RAS MENA Summit, showcasing cutting-edge robotics and AI here at E-JUST!',
       emotion: 'HAPPY', action: null
     };
   }
-  if (/(thank you|thanks|great job|awesome|good job|bravo)/i.test(t) || /(شكرا|شكراً|تسلمي|شاطرة|برافو|عاش|شكرا جزيلا)/i.test(t)) {
+
+  // 8. Capabilities & Features
+  if (/(what can you do|features|abilities|skills|help me)/i.test(t) || /(بتعملي إيه|تقدري تعملي إيه|وظيفتك|تساعديني|امكانياتك|قدراتك)/i.test(t)) {
     return {
-      text: ar ? 'العفو! تحت أمرك، واستمتع بيومك في قمة IEEE RAS بالجامعة!' : "You're very welcome! Enjoy your time at the IEEE RAS MENA Summit!",
+      text: ar ? 'أقدر أرحب بضيوف الـ VIP، وأفحص كروت الـ NFC، وأوصلكم لقاعات المؤتمر، وأتحرك بأوامر الصوت وأتكلم معاكم!' : 'I can welcome VIP guests, verify university NFC cards, escort you to summit halls, drive via voice commands, and chat with you!',
+      emotion: 'HAPPY', action: null
+    };
+  }
+
+  // 9. Jokes & Humor
+  if (/(tell me a joke|say something funny|make me laugh|do you know a joke)/i.test(t) || /(قولي نكتة|قوليلي نكتة|نكتة|ضحكيني|عايز أضحك)/i.test(t)) {
+    const jokesEn = [
+      "Why did the robot go on vacation? Because it needed to recharge its batteries and clear its cache!",
+      "There are 10 types of people in the world: those who understand binary, and those who don't!",
+      "Why was the robot cold? Because it left its Windows open!"
+    ];
+    const jokesAr = [
+      "مرة روبوت راح لدكتور قاله: يا دكتور حاسس بوجع في المعالج بتاعي.. قاله دي مش مشكلة كود، انت بس محتاج ترست الراوتر!",
+      "ليه الروبوت مش بيحب الشمس؟ عشان مراوح التبريد بتشتكي من الحر وبتخاف على البطارية!",
+      "كم مهندس كمبيوتر محتاجين عشان يغيروا لمبة محروقة؟ ولا واحد، دي مشكلة هاردوير مش سوفت وير!"
+    ];
+    const pool = ar ? jokesAr : jokesEn;
+    return { text: pool[Math.floor(Math.random() * pool.length)], emotion: 'HAPPY', action: null };
+  }
+
+  // 10. Restrooms
+  if (/(restroom|bathroom|toilet|washroom|wc)/i.test(t) || /(حمام|الحمام|دورة مياه|التواليت)/i.test(t)) {
+    return {
+      text: ar ? 'دورات المياه موجودة في الممر الرئيسي على اليمين بجوار مدخل القاعة الكبرى.' : 'The restrooms are located right down the main lobby corridor to the right, adjacent to the auditorium entrance.',
+      emotion: 'HAPPY', action: null
+    };
+  }
+
+  // 11. Cafeteria / Food / Coffee
+  if (/(cafeteria|coffee|tea|food|lunch|drink|water|canteen)/i.test(t) || /(كافتيريا|قهوة|شاي|أكل|غدا|مشروبات|مية|كافيه)/i.test(t)) {
+    return {
+      text: ar ? 'استراحة القهوة والكافتيريا قدام على طول بعد الحديقة الداخلية للمبنى، استمتع بوقتك!' : 'The refreshment lounge and cafeteria are straight ahead past the central garden. Enjoy your break!',
+      emotion: 'HAPPY', action: null
+    };
+  }
+
+  // 12. Compliments & Flattery
+  if (/(you are beautiful|you are smart|you look great|i love you|you are cool|awesome|pretty)/i.test(t) || /(إنت جميلة|إنتِ ذكية|شكلك حلو|بحبك|روبوت ممتاز|عاش|شاطرة جدا)/i.test(t)) {
+    return {
+      text: ar ? 'تسلملي يا رب! كلامك اللطيف ده بيسعد دوائري الكهربائية كلها، نورتنا بجد!' : "Thank you so much! That really warms my circuits. You're pretty awesome yourself!",
       emotion: 'LOVE', action: null
     };
   }
-  if (/(hello|hi|hey|good morning|welcome|howdy|sup)/i.test(t) || /(أهلا|اهلاً|مرحبا|صباح الخير|سلام|ازيك|إزيك|عاملة إيه)/i.test(t)) {
+
+  // 13. How Are You
+  if (/(how are you|how do you do|how are things|how are u)/i.test(t) || /(عاملة إيه|اخبارك|إيه الأخبار|كيف حالك|إزيك|ازيك)/i.test(t)) {
     return {
-      text: ar ? 'أهلاً بيك! نورت قمة IEEE RAS في الجامعة المصرية اليابانية، أقدر أساعدك في إيه؟' : 'Hi there! Welcome to the IEEE RAS MENA Summit at E-JUST. How can I help you today?',
+      text: ar ? 'أنا في أحسن حال وفي قمة نشاطي ومتحمسة جداً لقمة الروبوتات النهارده! إنت أخبارك إيه؟' : "I'm running at 100% capacity and thrilled to welcome everyone to E-JUST! How is your day going?",
       emotion: 'HAPPY', action: null
     };
   }
-  if (/(how are you|how do you do)/i.test(t) || /(عاملة إيه|اخبارك|إيه الأخبار|كيف حالك)/i.test(t)) {
+
+  // 14. Thanks & Gratitude
+  if (/(thank you|thanks|great job|appreciate it|good job|bravo)/i.test(t) || /(شكرا|شكراً|تسلمي|شاطرة|برافو|عاش|شكرا جزيلا|تسلم)/i.test(t)) {
     return {
-      text: ar ? 'أنا بخير ومتحمسة جدا لقمة الروبوتات اليوم! تحب تروح أي قاعة؟' : "I'm doing fantastic and thrilled for the robotics summit! Would you like directions to any hall?",
+      text: ar ? 'العفو! تحت أمرك دايماً، واستمتع بوقتك في قمة IEEE RAS بالجامعة!' : "You're very welcome! It is an absolute pleasure to assist you. Enjoy the summit!",
+      emotion: 'LOVE', action: null
+    };
+  }
+
+  // 15. Greetings
+  if (/(hello|hi|hey|good morning|good afternoon|good evening|welcome|howdy|sup)/i.test(t) || /(أهلا|اهلاً|مرحبا|صباح الخير|مساء الخير|سلام|هاي|أهلاً وسهلاً)/i.test(t)) {
+    return {
+      text: ar ? 'أهلاً وسهلاً بحضرتك! نورت قمة IEEE RAS في الجامعة المصرية اليابانية، أقدر أساعدك بإيه النهارده؟' : 'Hello and welcome! It is wonderful to meet you here at E-JUST. How can I assist you today?',
       emotion: 'HAPPY', action: null
     };
   }
+
+  // 16. Fallbacks: 6 Varied, Contextual, Intelligent Responses (Never Repeat a Single Phrase)
+  const fallbacksEn = [
+    "That is an interesting thought! While I continue learning, would you like directions to the keynote auditorium or assistance with your VIP badge?",
+    "I'm always expanding my knowledge from our wonderful summit guests! You can ask me about our IEEE robotics team, campus facilities, or voice driving commands.",
+    "Fascinating! Feel free to ask me for directions, about Prof. El-Sabbagh, or tell me to move forward or turn around.",
+    "I am thrilled to have you here at E-JUST! How can I assist your visit or guide you through today's summit schedule?",
+    "Great thought! I'm here to welcome guests, verify university NFC cards, and escort attendees. What can I do for you next?",
+    "I love chatting with summit attendees! Let me know if you need any directions or want to see my expressive humanoid eyes react!"
+  ];
+  const fallbacksAr = [
+    "سؤال جميل ومثير للاهتمام! أنا بتعلم كل يوم من ضيوفنا، تحب أوجهك لقاعة المحاضرات الرئيسية أو أساعدك في أي استفسار؟",
+    "فكرة ممتازة! أنا هنا عشان أساعدك في فعاليات القمة، تحب أوصلك لأي قاعة ولا تحب نتحرك لقدام مع بعض؟",
+    "مبسوطة جداً بوجودك معانا في إيجست! تقدر تسألني عن فرع الروبوتات، أو تقولي اتحركي لقدام أو لفي، وهنفذ فوراً.",
+    "نورت فعاليات قمة الروبوتات في الجامعة المصرية اليابانية! لو محتاج تعرف مكان الكافتيريا أو القاعات قولي على طول.",
+    "حلو أوي! تقدر تسألني عن رئيس الجامعة أو فعاليات اليوم، أقدر أساعدك بإيه كمان؟",
+    "أنا دايماً في خدمتك! تحب نوصل للمدرج الرئيسي ولا حابب تستكشف معايا فعاليات القمة؟"
+  ];
+  const pool = ar ? fallbacksAr : fallbacksEn;
+  const picked = pool[Math.floor(Math.random() * pool.length)];
   return {
-    text: ar ? 'أهلاً بيك في قمة IEEE RAS بالجامعة المصرية اليابانية! لو محتاج تروح أي قاعة مرر كارتك أو وجهني بصوتك.' : 'Welcome to the IEEE RAS MENA Summit at E-JUST! If you need directions to a hall, scan your card or guide me with your voice.',
-    emotion: 'HAPPY', action: null
+    text: picked,
+    emotion: 'CURIOUS',
+    action: null
   };
 }
 
@@ -1645,13 +1843,13 @@ async function handleTurn(userText, context) {
   caption(userText, true);
 
   // Language switch by voice (handles both English & phonetic Arabic transcriptions)
-  if (/(speak|talk|switch to|in)\s+arabic|اتكلم[يى]? عرب[يى]|تحدث[يى]? بالعرب|كلمن[يى] عرب[يى]|بالعرب[يى]|نتكلم عرب[يى]/i.test(userText)) {
+  if (/(speak|talk|switch to|in)\s+arabic|عربي|اتكلم[يى]? عربي|تكلم[يى]? بالعربي|حول[يى] عربي|بالعربي[ةه]|بالعربي/i.test(userText)) {
     if (cfg.lang !== 'ar-EG') setLang('ar-EG');
     history.push({ role: 'user', text: userText });
-    const t = 'أكيد! يلا نتكلم عربي. أقدر أساعدك في إيه؟'; history.push({ role: 'model', text: t });
+    const t = 'حاضر! من عيوني الاتنين، هكلمك بالعربي دلوقتي. أقدر أساعدك في إيه؟'; history.push({ role: 'model', text: t });
     return speak(t, 'HAPPY');
   }
-  if (/(english please|speak english|talk in english|switch to english|سبيك انجلش|انجلش|اتكلم[يى]? انجليز[يى]|بالانجليز[يى])/i.test(userText)) {
+  if (/(english please|speak english|talk in english|switch to english|اتكلم انجليزي|انجليزي|انجلش|حول[يى]? للانجليزي[ةه]?|بالانجليزي[ةه]?)/i.test(userText)) {
     if (cfg.lang !== 'en-US') setLang('en-US');
     history.push({ role: 'user', text: userText });
     const t = "Sure! Let's talk in English. How can I help?"; history.push({ role: 'model', text: t });
@@ -1669,7 +1867,7 @@ async function handleTurn(userText, context) {
     hwState.state = 'PAUSED';
     updateHwUi();
     const ar = isArabic(userText);
-    const t = ar ? 'وقفت حالا. قولي أول ما تحب نكمل!' : "Paused escort. Let me know when you'd like to continue!";
+    const t = ar ? 'وقفت حالا. قولي لما تحب نكمل المشي!' : "Paused escort. Let me know when you'd like to continue!";
     history.push({ role: 'user', text: userText }, { role: 'model', text: t });
     return speak(t, 'SURPRISED', { holdAfter: 3000 });
   }
@@ -1743,32 +1941,29 @@ async function handleTurn(userText, context) {
 
   history.push({ role: 'user', text: userText });
   thinking = true;
-  const thinkTimer = setTimeout(() => { if (thinking) setEmotion('THINKING'); }, 350);  // avoid flicker on fast replies
+  setEmotion('THINKING');
+  updateMicBadge('thinking');
+
   try {
     const r = await askBrain(userText, context);
-    if (!thinking) return;  // superseded by a newer question
-    thinking = false; clearTimeout(thinkTimer);
-    if (!r.text) throw new Error('empty reply');
+    if (!thinking) return;  // superseded by newer utterance
+    thinking = false;
+    if (!r || !r.text) throw new Error('empty reply');
     history.push({ role: 'model', text: r.text });
     if (r.action === 'ESCORT') sendBle({ cmd: 'START_ESCORT', name: 'Guest', dest: 'Main Conference Hall', markers: 1 });
     log('reply:', r.emotion, r.text);
     await speak(r.text, r.emotion, { firstAudioB64: r.firstAudioB64, clauses: r.clauses });
   } catch (e) {
-    clearTimeout(thinkTimer);
-    if (e.name === 'AbortError' && !thinking) return;  // we aborted on purpose (user kept talking)
+    if (e.name === 'AbortError' && !thinking) return;
     thinking = false;
-    log('cloud brain unavailable, falling back to local offline smart engine:', e.message);
-    const off = getOfflineReply(userText);
+    log('Brain exception, falling back to smart offline responder:', e.message);
+    const off = await getOfflineReply(userText);
     history.push({ role: 'model', text: off.text });
     log('offline reply:', off.emotion, off.text);
     speak(off.text, off.emotion);
   }
 }
 
-/* =============================================================================
-   4. EARS — single-utterance Android-native recognition (continuous=false),
-      100% immune to speaker self-echo, with keyword & touch barge-in
-   ============================================================================= */
 function updateMicBadge(state, detail = '') {
   const b = $('micBadge');
   if (!b) return;
@@ -2675,9 +2870,17 @@ canvas.addEventListener('pointerup', () => {
 });
 canvas.addEventListener('pointerleave', () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
 
+function updateBrainSettingsUi() {
+  const p = $('sProvider') ? $('sProvider').value : 'gemini';
+  if ($('cfgGemini')) $('cfgGemini').style.display = (p === 'gemini') ? 'block' : 'none';
+  if ($('cfgBridge')) $('cfgBridge').style.display = (p === 'relay') ? 'block' : 'none';
+  if ($('cfgOpenRouter')) $('cfgOpenRouter').style.display = (p === 'openrouter') ? 'block' : 'none';
+}
+window.updateBrainSettingsUi = updateBrainSettingsUi;
+
 function openSettings() {
   $('sStyle').value = cfg.style || 'nordic';
-  $('sProvider').value = cfg.provider; $('sBridge').value = cfg.bridge; $('sOrKey').value = cfg.orKey; $('sOrModel').value = cfg.orModel;
+  $('sProvider').value = cfg.provider || 'gemini'; if ($('sGeminiKey')) $('sGeminiKey').value = cfg.geminiKey || ''; if ($('sGeminiModel')) $('sGeminiModel').value = cfg.geminiModel || 'gemini-2.0-flash'; updateBrainSettingsUi(); $('sBridge').value = cfg.bridge; $('sOrKey').value = cfg.orKey; $('sOrModel').value = cfg.orModel;
   $('sLang').value = cfg.lang; $('sVoice').value = cfg.voice; $('sCaptions').checked = cfg.captions; $('sBrows').checked = cfg.brows; $('sCamPrev').checked = cfg.camPrev;
   $('sAllowAnyNfc').checked = hwState.allowAnyNfc;
   updateHwUi();
@@ -2685,14 +2888,14 @@ function openSettings() {
 }
 $('bSave').onclick = () => {
   cfg.style = $('sStyle').value;
-  cfg.provider = $('sProvider').value; cfg.bridge = $('sBridge').value.trim(); cfg.orKey = $('sOrKey').value.trim(); cfg.orModel = $('sOrModel').value.trim() || cfg.orModel;
+  cfg.provider = $('sProvider').value; cfg.geminiKey = $('sGeminiKey') ? $('sGeminiKey').value.trim() : ''; cfg.geminiModel = ($('sGeminiModel') && $('sGeminiModel').value.trim()) || 'gemini-2.0-flash'; cfg.bridge = $('sBridge').value.trim(); cfg.orKey = $('sOrKey').value.trim(); cfg.orModel = $('sOrModel').value.trim() || cfg.orModel;
   cfg.voice = $('sVoice').value; cfg.captions = $('sCaptions').checked; cfg.brows = $('sBrows').checked; cfg.camPrev = $('sCamPrev').checked;
   hwState.allowAnyNfc = $('sAllowAnyNfc').checked;
   store.set('allow_any_nfc', hwState.allowAnyNfc ? '1' : '0');
   if (hwState.connected) sendBle({ cmd: 'ALLOW_ANY_NFC', allow: hwState.allowAnyNfc });
   store.set('style_default_v2', cfg.style);
   store.set('voice_fast_v2', cfg.voice);
-  for (const k of ['provider', 'bridge', 'orKey', 'orModel']) store.set(k, cfg[k]);
+  for (const k of ['provider', 'geminiKey', 'geminiModel', 'bridge', 'orKey', 'orModel']) store.set(k, cfg[k]);
   store.set('captions', cfg.captions ? '1' : '0'); store.set('brows', cfg.brows ? '1' : '0'); store.set('camPrev', cfg.camPrev ? '1' : '0');
   if ($('sLang').value !== cfg.lang) setLang($('sLang').value);
   $('caption').style.display = cfg.captions ? 'block' : 'none';
