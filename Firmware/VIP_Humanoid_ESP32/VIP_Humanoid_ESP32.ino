@@ -445,6 +445,12 @@ void handleIncomingCommand(const String& cmd) {
         executeManualDrive(TURN_SPEED, -TURN_SPEED, duration);
         Serial.printf("[CMD] Voice Turn Right (%d ms)\n", duration);
         sendBlePacket("{\"event\":\"MANUAL\",\"action\":\"TURN_RIGHT\"}");
+    } else if (cmd.indexOf("WAVE") >= 0) {
+        Serial.println("[CMD] Voice Wave Gesture");
+        executeManualDrive(-TURN_SPEED / 2, TURN_SPEED / 2, 220);
+        delay(250);
+        executeManualDrive(TURN_SPEED / 2, -TURN_SPEED / 2, 220);
+        sendBlePacket("{\"event\":\"GESTURE\",\"action\":\"WAVE\"}");
     } else if (cmd.indexOf("STOP") >= 0) {
         stopMotors();
         manualDriveActive = false;
@@ -498,7 +504,7 @@ void setup() {
     }
 
     // Initialize BLE Nordic UART Service
-    BLEDevice::init("AURA-EJUST-BOT");
+    BLEDevice::init("AURA-BOT");
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
 
@@ -517,7 +523,7 @@ void setup() {
     pAdvertising->setMinPreferred(0x12);
     BLEDevice::startAdvertising();
 
-    Serial.println("[BLE] Nordic UART Ready! Device name: AURA-EJUST-BOT");
+    Serial.println("[BLE] Nordic UART Ready! Device name: AURA-BOT");
     Serial.printf("[SYSTEM] %d VIP Cards Registered. Ready for NFC Scan.\n", TOTAL_VIP_CARDS);
 }
 

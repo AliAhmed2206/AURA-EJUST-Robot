@@ -61,22 +61,51 @@
   #nfcBanner.invalid { border-color: #ff4081; color: #ff99bb; box-shadow: 0 0 22px rgba(255,64,129,.4); }
   #nfcBanner.valid { border-color: #00e5ff; color: #80f8ff; box-shadow: 0 0 22px rgba(0,229,255,.45); }
 
-  /* Dedicated Fullscreen Camera / Vision Mode */
-  #camView { position: fixed; inset: 0; width: 100vw; height: 100vh; background: #000; z-index: 50; display: none; overflow: hidden; }
+  /* Dedicated Fullscreen & Floating Corner Camera / Vision Mode */
+  #camView { position: fixed; inset: 0; width: 100vw; height: 100vh; background: #000; z-index: 50; display: none; overflow: hidden; transition: width .3s cubic-bezier(0.16, 1, 0.3, 1), height .3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .25s ease; }
   #fullCamVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   #camHudCanvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 51; }
-  .cam-top-bar { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; gap: 10px; align-items: center; z-index: 52; }
+  .cam-top-bar { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; gap: 8px; align-items: center; z-index: 52; }
   .hud-pill { padding: 6px 14px; border-radius: 99px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; letter-spacing: .08em;
-    background: rgba(11,7,20,.8); border: 1px solid rgba(0,229,255,.5); color: #00e5ff; backdrop-filter: blur(6px); }
+    background: rgba(11,7,20,.8); border: 1px solid rgba(0,229,255,.5); color: #00e5ff; backdrop-filter: blur(6px); user-select: none; }
   .live-pill { color: #00e5ff; border-color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,.35); }
-  .hud-btn { padding: 7px 16px; border-radius: 10px; font-size: 11px; font-weight: 600; letter-spacing: .06em;
-    background: rgba(11,7,20,.85); border: 1px solid #00e5ff; color: #cfe9ff; cursor: pointer; backdrop-filter: blur(6px); transition: all .2s; }
+  .hud-btn { padding: 7px 14px; border-radius: 10px; font-size: 11px; font-weight: 600; letter-spacing: .06em;
+    background: rgba(11,7,20,.85); border: 1px solid #00e5ff; color: #cfe9ff; cursor: pointer; backdrop-filter: blur(6px); transition: all .2s; user-select: none; white-space: nowrap; }
   .hud-btn:hover { background: #00e5ff; color: #05030a; }
   .hud-exit { border-color: #ff4081; color: #ff80ab; }
   .hud-exit:hover { background: #ff4081; color: #fff; }
-  .cam-bottom-bar { position: absolute; bottom: 14px; left: 0; right: 0; display: flex; justify-content: center; z-index: 52; }
+  .cam-bottom-bar { position: absolute; bottom: 14px; left: 0; right: 0; display: flex; justify-content: center; z-index: 52; pointer-events: none; }
   #camTelemetry { padding: 5px 18px; border-radius: 99px; font-size: 11px; font-family: ui-monospace, Consolas, monospace; letter-spacing: .08em;
-    background: rgba(11,7,20,.8); border: 1px solid rgba(156,39,176,.4); color: rgba(207,233,255,.75); backdrop-filter: blur(6px); }
+    background: rgba(11,7,20,.8); border: 1px solid rgba(156,39,176,.4); color: rgba(207,233,255,.75); backdrop-filter: blur(6px); user-select: none; }
+
+  /* Floating Corner Mode (PiP): Robot Face + User Face Simultaneously Visible */
+  #camView.corner-mode {
+    position: fixed !important;
+    inset: auto !important;
+    bottom: 22px !important;
+    right: 22px !important;
+    width: 320px !important;
+    height: 220px !important;
+    border-radius: 16px !important;
+    border: 2px solid #00e5ff !important;
+    box-shadow: 0 10px 36px rgba(0,229,255,.4), 0 0 0 1px rgba(11,7,20,.85) !important;
+    z-index: 45 !important;
+    overflow: hidden !important;
+  }
+  #camView.corner-mode .cam-top-bar { top: 8px; left: 8px; right: 8px; gap: 4px; }
+  #camView.corner-mode .hud-pill { padding: 3px 8px; font-size: 10px; }
+  #camView.corner-mode #camTargetInfo { display: none; }
+  #camView.corner-mode .hud-btn { padding: 4px 8px; font-size: 10px; }
+  #camView.corner-mode .cam-bottom-bar { bottom: 6px; }
+  #camView.corner-mode #camTelemetry { padding: 2px 10px; font-size: 9px; letter-spacing: .02em; }
+  @media (max-width: 600px) {
+    #camView.corner-mode {
+      width: 240px !important;
+      height: 170px !important;
+      bottom: 14px !important;
+      right: 14px !important;
+    }
+  }
 
   /* Settings: hidden; open with a long-press (1 s) anywhere */
   #settings { position: fixed; inset: 0; background: rgba(5,3,10,.94); display: none; overflow: auto; z-index: 10; }
@@ -119,19 +148,20 @@
 <video id="cam" playsinline muted style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none"></video>
 <canvas id="camPreview" width="160" height="120"></canvas>
 
-<!-- Dedicated Fullscreen Camera / Vision View -->
+<!-- Dedicated Camera / Vision View (Supports Fullscreen and Floating Corner PiP) -->
 <div id="camView">
   <video id="fullCamVideo" playsinline autoplay muted></video>
   <canvas id="camHudCanvas"></canvas>
   <div class="cam-top-bar">
-    <div class="hud-pill live-pill">● LIVE OPTICAL FEED</div>
+    <div class="hud-pill live-pill">● LIVE</div>
     <div class="hud-pill" id="camTargetInfo">TARGET: SCANNING</div>
     <div style="flex:1"></div>
-    <button class="hud-btn" id="camFlipBtn">🔄 FLIP LENS</button>
-    <button class="hud-btn hud-exit" id="camCloseBtn">✕ EXIT FULLSCREEN</button>
+    <button class="hud-btn" id="camModeBtn" title="Toggle Corner card / Fullscreen">🗗 CORNER</button>
+    <button class="hud-btn" id="camFlipBtn" title="Flip Front / Rear Lens">🔄 FLIP</button>
+    <button class="hud-btn hud-exit" id="camCloseBtn" title="Close Camera Feed">✕ CLOSE</button>
   </div>
   <div class="cam-bottom-bar">
-    <div id="camTelemetry">OPTICAL SENSORS ACTIVE | NORDIC AI TRACKER | 30 FPS</div>
+    <div id="camTelemetry">OPTICAL SENSORS ACTIVE | NORDIC AI TRACKER</div>
   </div>
 </div>
 
@@ -1578,7 +1608,7 @@ function escapeHtml(s) { return s.replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<'
 const history = [];   // [{role:'user'|'model', text}]
 let chatCtrl = null, thinking = false, pendingPrompt = '';
 
-const SYSTEM_PROMPT = `You are AURA, the friendly welcome robot of the IEEE RAS Student Branch at E-JUST (Egypt-Japan University of Science and Technology) at the IEEE RAS MENA Summit in New Borg El-Arab City, Alexandria, Egypt. You have a warm, playful young woman's personality. Speak like a real person in a live spoken conversation: 1-2 short sentences, contractions, no lists, no emojis, no markdown. Reply in the guest's language (Egyptian Arabic if they speak Arabic). You can see the guest through your camera. The President of E-JUST is Prof. Ahmed El-Sabbagh (الأستاذ الدكتور أحمد الصباغ). Never invent event details you don't know; suggest the registration desk instead. If asked where the hall is, reply exactly "It's right there, follow me !!" (Arabic: "هي هناك على طول، تعالى ورايا !!") and add [ACTION: ESCORT]. End every reply with one tag [EMOTION: X], X in HAPPY, CURIOUS, SURPRISED, SAD, WINK, LOVE, THINKING, NEUTRAL.`;
+const SYSTEM_PROMPT = `You are AURA, the friendly welcome robot of the IEEE RAS Student Branch at E-JUST (Egypt-Japan University of Science and Technology) at the IEEE RAS MENA Summit in New Borg El-Arab City, Alexandria, Egypt. You have a warm, playful young woman's personality. Speak like a real person in a live spoken conversation: 1-2 short sentences, contractions, no lists, no emojis, no markdown. Reply in the guest's language (Egyptian Arabic if they speak Arabic). You can see the guest through your camera; if asked what you see, describe what you genuinely see in the camera image warmly and accurately in 1-2 sentences. The President of E-JUST is Prof. Ahmed El-Sabbagh (الأستاذ الدكتور أحمد الصباغ). Never invent event details you don't know; suggest the registration desk instead. If asked where the hall is, reply exactly "It's right there, follow me !!" (Arabic: "هي هناك على طول، تعالى ورايا !!") and add [ACTION: ESCORT]. If asked to move forward, backward, turn, wave, or stop, you may add [ACTION: FORWARD], [ACTION: BACKWARD], [ACTION: LEFT], [ACTION: RIGHT], [ACTION: STOP], or [ACTION: WAVE]. End every reply with one tag [EMOTION: X], X in HAPPY, CURIOUS, SURPRISED, SAD, WINK, LOVE, THINKING, NEUTRAL.`;
 
 function parseReply(raw) {
   const em = (raw.match(/\[EMOTION:\s*([A-Z_]+)\]/i) || [])[1];
@@ -1594,12 +1624,47 @@ const visionSnapCtx = visionSnapCanvas.getContext('2d');
 
 function captureCameraFrameB64() {
   try {
-    const c = $('cam');
-    if (!c || c.readyState < 2 || !c.videoWidth) return null;
-    visionSnapCtx.drawImage(c, 0, 0, 320, 240);
-    return visionSnapCanvas.toDataURL('image/jpeg', 0.62);
+    const full = $('fullCamVideo');
+    const camEl = $('cam');
+    const video = (full && full.readyState >= 2 && full.videoWidth > 0) ? full : ((camEl && camEl.readyState >= 2 && camEl.videoWidth > 0) ? camEl : null);
+    if (!video) return null;
+    visionSnapCtx.drawImage(video, 0, 0, 320, 240);
+    return visionSnapCanvas.toDataURL('image/jpeg', 0.65);
   } catch (e) {
     return null;
+  }
+}
+
+function dispatchRobotAction(action) {
+  if (!action) return;
+  const a = String(action).toUpperCase().trim();
+  log('Dispatching robot action to ESP32:', a);
+  if (a === 'ESCORT' || a === 'START_ESCORT') {
+    sendBle({ cmd: 'START_ESCORT', name: hwState.lastNfcName || 'Guest', dest: 'Main Conference Hall', markers: 1 });
+    hwState.state = 'ESCORTING';
+    updateHwUi();
+  } else if (a === 'FORWARD' || a === 'MOVE_FWD') {
+    sendBle({ cmd: 'MOVE_FWD', ms: 1500 });
+    hwState.state = 'DRIVING';
+    updateHwUi();
+  } else if (a === 'BACKWARD' || a === 'BACK' || a === 'MOVE_REV') {
+    sendBle({ cmd: 'MOVE_REV', ms: 1500 });
+    hwState.state = 'DRIVING';
+    updateHwUi();
+  } else if (a === 'LEFT' || a === 'TURN_LEFT') {
+    sendBle({ cmd: 'TURN_LEFT', ms: 650 });
+    hwState.state = 'DRIVING';
+    updateHwUi();
+  } else if (a === 'RIGHT' || a === 'TURN_RIGHT') {
+    sendBle({ cmd: 'TURN_RIGHT', ms: 650 });
+    hwState.state = 'DRIVING';
+    updateHwUi();
+  } else if (a === 'STOP' || a === 'HALT') {
+    sendBle({ cmd: 'STOP' });
+    hwState.state = 'PAUSED';
+    updateHwUi();
+  } else if (a === 'WAVE') {
+    sendBle({ cmd: 'WAVE' });
   }
 }
 
@@ -1869,10 +1934,27 @@ async function getOfflineReply(text) {
   };
 }
 
+const VISION_QUESTION_RE = /(what do you see|describe what you see|describe me|what am i (wearing|holding)|look at me|how many fingers|do you see me|tell me what you see|can you see me|who is standing|what is in front of you|شايف[ةي]|شوفي|شايفاني|شايفة ايه|شايف ايه|وصفي|بتشوفي ايه|انا لابس ايه|شايفاني ازاي|بصي عليا)/i;
+
 async function handleTurn(userText, context) {
   userText = userText.trim(); if (!userText) return;
   log('heard:', userText);
   caption(userText, true);
+
+  // 0. Vision / Camera query detection: start stream and open corner window automatically
+  if (VISION_QUESTION_RE.test(userText)) {
+    if (!activeVideoStream) {
+      try { await startCameraStream(currentFacingMode); } catch (e) {}
+    }
+    if (!camViewActive) {
+      await openCamera('corner');
+    }
+    await new Promise(r => setTimeout(r, 260));
+    const visionContext = isArabic(userText)
+      ? 'سؤال بصري: الضيف بيسألك شايفة إيه في الكاميرا دلوقتي. بصي على صورة الكاميرا المرفقة واوصفي بذكاء ومرح ودقة اللي شايفاه (الشخص، ملابسه، تعبيراته، المحيط) في جملة أو جملتين عامية مصرية لطيفة.'
+      : 'Visual query: The guest asks what you see through your camera right now. Look at the attached camera image and describe what you genuinely see (the person, clothing, expression, surroundings) in 1-2 friendly, conversational spoken sentences.';
+    context = [context, visionContext].filter(Boolean).join(' | ');
+  }
 
   // Language switch by voice (handles both English & phonetic Arabic transcriptions)
   if (/(speak|talk|switch to|in)\s+arabic|عربي|اتكلم[يى]? عربي|تكلم[يى]? بالعربي|حول[يى] عربي|بالعربي[ةه]|بالعربي/i.test(userText)) {
@@ -1923,6 +2005,11 @@ async function handleTurn(userText, context) {
 
   if (WAVE_RE.test(userText)) {
     sendBle({ cmd: 'WAVE' });
+    const ar = isArabic(userText);
+    const t = ar ? 'أهلاً بيك! أنا بحييك بإيدي وببتسم ليك!' : 'Hello there! Waving to you warmly!';
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    if (!bleRx) notice('⚠️ Bluetooth base not connected. Tap BLE badge to pair.', 3500);
+    return speak(t, 'HAPPY', { holdAfter: 2500 });
   }
 
   // Voice control for stopping / pausing physical escort
@@ -2014,7 +2101,7 @@ async function handleTurn(userText, context) {
     thinking = false;
     if (!r || !r.text) throw new Error('empty reply');
     history.push({ role: 'model', text: r.text });
-    if (r.action === 'ESCORT') sendBle({ cmd: 'START_ESCORT', name: 'Guest', dest: 'Main Conference Hall', markers: 1 });
+    dispatchRobotAction(r.action);
     log('reply:', r.emotion, r.text);
     await speak(r.text, r.emotion, { firstAudioB64: r.firstAudioB64, clauses: r.clauses });
   } catch (e) {
@@ -2307,15 +2394,28 @@ async function startCameraStream(facingMode = 'user') {
   }
 }
 
-async function openCameraFullscreen() {
+let camMode = 'corner'; // 'corner' | 'fullscreen'
+
+async function openCamera(preferredMode) {
   ensureAudio();
-  $('camView').style.display = 'block';
+  if (preferredMode) camMode = preferredMode;
+  const view = $('camView');
+  view.style.display = 'block';
   camViewActive = true;
-  try {
-    if (document.documentElement.requestFullscreen) {
-      await document.documentElement.requestFullscreen();
-    }
-  } catch (e) {}
+  updateCamModeUi();
+
+  if (camMode === 'fullscreen') {
+    try {
+      if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (e) {}
+  } else {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+    } catch (e) {}
+  }
+
   resizeCamHud();
   if (!activeVideoStream) {
     await startCameraStream(currentFacingMode);
@@ -2326,8 +2426,33 @@ async function openCameraFullscreen() {
   }
 }
 
-function closeCameraFullscreen() {
-  $('camView').style.display = 'none';
+function updateCamModeUi() {
+  const view = $('camView');
+  const modeBtn = $('camModeBtn');
+  const closeBtn = $('camCloseBtn');
+  if (!view) return;
+  if (camMode === 'corner') {
+    view.classList.add('corner-mode');
+    if (modeBtn) modeBtn.textContent = '🗖 FULLSCREEN';
+    if (closeBtn) closeBtn.textContent = '✕ CLOSE';
+  } else {
+    view.classList.remove('corner-mode');
+    if (modeBtn) modeBtn.textContent = '🗗 CORNER';
+    if (closeBtn) closeBtn.textContent = '✕ EXIT FULLSCREEN';
+  }
+}
+
+function toggleCamMode() {
+  camMode = (camMode === 'corner') ? 'fullscreen' : 'corner';
+  openCamera(camMode);
+}
+
+function closeCamera() {
+  const view = $('camView');
+  if (view) {
+    view.style.display = 'none';
+    view.classList.remove('corner-mode');
+  }
   camViewActive = false;
   try {
     if (document.fullscreenElement) {
@@ -2340,8 +2465,9 @@ const camHud = $('camHudCanvas');
 const camCtx = camHud ? camHud.getContext('2d') : null;
 function resizeCamHud() {
   if (!camHud) return;
-  camHud.width = window.innerWidth;
-  camHud.height = window.innerHeight;
+  const view = $('camView');
+  camHud.width = (view && view.clientWidth) ? view.clientWidth : window.innerWidth;
+  camHud.height = (view && view.clientHeight) ? view.clientHeight : window.innerHeight;
 }
 window.addEventListener('resize', resizeCamHud);
 
@@ -2603,16 +2729,34 @@ async function connectBle() {
   try {
     notice('Scanning for Bluetooth devices...', 2500);
     // acceptAllDevices: true allows pairing with all nearby BLE devices regardless of payload splitting
-    const dev = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: [
-        NUS,
-        '0000ffe0-0000-1000-8000-00805f9b34fb',
-        'battery_service',
-        'device_information',
-        'generic_access'
-      ]
-    });
+    let dev;
+    try {
+      dev = await navigator.bluetooth.requestDevice({
+        filters: [
+          { namePrefix: 'AURA' },
+          { services: [NUS] }
+        ],
+        optionalServices: [
+          NUS,
+          '0000ffe0-0000-1000-8000-00805f9b34fb',
+          'battery_service',
+          'device_information',
+          'generic_access'
+        ]
+      });
+    } catch (filterErr) {
+      if (filterErr.name === 'NotFoundError') throw filterErr;
+      dev = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          NUS,
+          '0000ffe0-0000-1000-8000-00805f9b34fb',
+          'battery_service',
+          'device_information',
+          'generic_access'
+        ]
+      });
+    }
     bleDev = dev;
     dev.addEventListener('gattserverdisconnected', () => {
       bleRx = null;
@@ -2875,16 +3019,32 @@ async function wake() {
 }
 
 // Top Bar & Camera Action Handlers
-$('camBtn').onclick = (e) => { e.stopPropagation(); openCameraFullscreen(); };
+$('camBtn').onclick = (e) => {
+  e.stopPropagation();
+  if (!camViewActive) {
+    // Open in Corner Mode by default so AURA's face remains fully visible in the center
+    openCamera('corner');
+  } else if (camMode === 'corner') {
+    openCamera('fullscreen');
+  } else {
+    closeCamera();
+  }
+};
 $('settingsBtn').onclick = (e) => { e.stopPropagation(); openSettings(); };
-$('camCloseBtn').onclick = (e) => { e.stopPropagation(); closeCameraFullscreen(); };
+if ($('camModeBtn')) $('camModeBtn').onclick = (e) => { e.stopPropagation(); toggleCamMode(); };
+$('camCloseBtn').onclick = (e) => { e.stopPropagation(); closeCamera(); };
 $('camFlipBtn').onclick = async (e) => {
   e.stopPropagation();
   const nextMode = (currentFacingMode === 'user') ? 'environment' : 'user';
   await startCameraStream(nextMode);
 };
 document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement && camViewActive) closeCameraFullscreen();
+  if (!document.fullscreenElement && camViewActive && camMode === 'fullscreen') {
+    // Graceful minimization to corner mode if user presses Esc in fullscreen
+    camMode = 'corner';
+    updateCamModeUi();
+    resizeCamHud();
+  }
 });
 
 $('langBadge').onclick = (e) => {
