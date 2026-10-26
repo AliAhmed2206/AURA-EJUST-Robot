@@ -2893,13 +2893,23 @@ function parseMovementIntent(rawText) {
   const t = rawText.toLowerCase().trim();
   const ar = isArabic(rawText);
 
-  // 1. Extract Duration in Milliseconds (defaults to sensible standard if not specified)
+  // 1. Extract Duration in Milliseconds or Degrees
   let ms = null;
+  let deg = null;
+
+  // Degrees: e.g. "360 deg", "360 degrees", "90 deg", "180 degree", "360 درجة"
+  const degMatch = t.match(/(\d+)\s*(deg|degs|degree|degrees|درجة|درجه)/i);
+  if (degMatch) {
+    deg = parseInt(degMatch[1], 10);
+    ms = Math.round(deg * 12.2); // ~12.2ms per degree at TURN_SPEED (360° = ~4400ms, 180° = ~2200ms, 90° = ~1100ms)
+  }
 
   // Numerical seconds: e.g. "5 seconds", "5s", "5 sec", "10 seconds", "5 ثواني", "٥ ثواني"
-  const secMatch = t.match(/(\d+)\s*(s|sec|secs|second|seconds|ثانية|ثواني|ثوان)/i);
-  if (secMatch) {
-    ms = parseInt(secMatch[1], 10) * 1000;
+  if (ms === null) {
+    const secMatch = t.match(/(\d+)\s*(s|sec|secs|second|seconds|ثانية|ثواني|ثوان)/i);
+    if (secMatch) {
+      ms = parseInt(secMatch[1], 10) * 1000;
+    }
   }
 
   // Word seconds
@@ -2989,11 +2999,38 @@ function parseMovementIntent(rawText) {
     };
   }
 
+  // Spin 360 / Full Circle Spin / Rotation by Degrees (e.g. "spin 360 deg", "spin 360 degrees", "rotate 90 deg")
+  const isLeft = /(left|counter[- ]?clockwise|عكس عقارب الساعة|شمال|يسار)/i.test(t);
+  const spinCmd = isLeft ? 'TURN_LEFT' : 'TURN_RIGHT';
+
+  if (/(spin.*360|360.*spin|rotate.*360|360.*rotate|turn.*360|360.*deg|360.*degree|full circle|لف.*360|دورة كاملة|لفة كاملة)/i.test(t)) {
+    const targetMs = ms || 4400;
+    return {
+      cmd: spinCmd,
+      action: 'SPIN_360',
+      ms: targetMs,
+      speechEn: `Okay, spinning 360 degrees for you!`,
+      speechAr: `حاضر، بلف 360 درجة دورة كاملة!`
+    };
+  }
+
+  // Generic Spin or Specified Degrees (e.g. "rotate 90 degrees", "do a spin", "spin in place", "spin around", "spin")
+  if (deg !== null || /(spin around|spin in place|do a spin|spin|لف لفة|لف حوالين نفسك)/i.test(t)) {
+    const targetMs = ms || 4400;
+    return {
+      cmd: spinCmd,
+      action: 'SPIN',
+      ms: targetMs,
+      speechEn: deg ? `Okay, spinning ${deg} degrees for you!` : `Okay, spinning around for you!`,
+      speechAr: deg ? `حاضر، هلف ${deg} درجة!` : `حاضر، بلف حوالين نفسي!`
+    };
+  }
+
   // E. Turn Around (180)
-  if (/(turn around|spin around|rotate 180|لف ورا|دور ورا|180)/i.test(t)) {
+  if (/(turn around|rotate 180|لف ورا|دور ورا|180)/i.test(t)) {
     const targetMs = ms || 2200;
     return {
-      cmd: 'TURN_RIGHT',
+      cmd: spinCmd,
       action: 'TURN_AROUND',
       ms: targetMs,
       speechEn: `Turning around ${durStrEn}!`,
@@ -3108,6 +3145,11 @@ function dispatchRobotAction(action, targetMs) {
   } else if (a === 'LEFT_WHEEL') {
     lastMovementCmd = 'TURN_LEFT';
     sendBle({ cmd: 'TURN_LEFT', ms: ms });
+    hwState.state = 'DRIVING';
+    updateHwUi();
+  } else if (a === 'SPIN_360' || a === 'SPIN' || a === 'TURN_AROUND') {
+    lastMovementCmd = 'TURN_RIGHT';
+    sendBle({ cmd: 'TURN_RIGHT', ms: ms || 4400 });
     hwState.state = 'DRIVING';
     updateHwUi();
   } else if (a === 'STOP' || a === 'HALT') {
