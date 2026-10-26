@@ -133,7 +133,7 @@
   #camPreview { position: fixed; right: 12px; top: 12px; width: 160px; height: 120px; border-radius: 10px; border: 1px solid rgba(0,229,255,.4);
     display: none; transform: scaleX(-1); z-index: 5; object-fit: cover; }
 
-  /* Floating Bottom Command & Chat Strip */
+  /* Draggable & Optional Floating Command & Chat Bar */
   #chatBar {
     position: fixed;
     bottom: 14px;
@@ -143,9 +143,133 @@
     flex-direction: column;
     align-items: center;
     gap: 7px;
-    z-index: 10;
-    width: min(94vw, 680px);
+    z-index: 40;
+    width: min(94vw, 700px);
     pointer-events: auto;
+    transition: box-shadow .2s ease, opacity .25s ease;
+  }
+  #chatBar.dragging {
+    opacity: 0.94;
+    box-shadow: 0 16px 48px rgba(0, 229, 255, 0.45), 0 0 0 2px #00e5ff !important;
+    cursor: grabbing !important;
+  }
+  #chatBar.chat-hidden {
+    display: none !important;
+  }
+  .chat-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 12px;
+    background: rgba(11, 7, 20, 0.88);
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    user-select: none;
+    touch-action: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  }
+  .chat-drag-handle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    color: #00e5ff;
+    cursor: grab;
+    flex: 1;
+    padding: 2px 0;
+  }
+  .chat-drag-handle .drag-icon {
+    font-size: 13px;
+    opacity: 0.9;
+  }
+  .chat-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chat-btn-tool {
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(0, 229, 255, 0.3);
+    color: #cfe9ff;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .chat-btn-tool:hover {
+    background: #00e5ff;
+    color: #05030a;
+  }
+  .chat-btn-tool.close {
+    border-color: rgba(255, 64, 129, 0.5);
+    color: #ff80ab;
+  }
+  .chat-btn-tool.close:hover {
+    background: #ff4081;
+    color: #fff;
+  }
+  #chatFloatingPill {
+    position: fixed;
+    bottom: 16px;
+    right: 20px;
+    z-index: 40;
+    display: none;
+    padding: 8px 16px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    background: rgba(11, 7, 20, 0.9);
+    border: 1.5px solid #00e5ff;
+    color: #00e5ff;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 6px 20px rgba(0, 229, 255, 0.35);
+    transition: all .2s ease;
+    user-select: none;
+  }
+  #chatFloatingPill:hover {
+    background: #00e5ff;
+    color: #05030a;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 26px rgba(0, 229, 255, 0.6);
+  }
+  .quick-pill.demo-happy {
+    border-color: #ffd700;
+    color: #ffe57f;
+    box-shadow: 0 0 10px rgba(255, 215, 0, 0.25);
+  }
+  .quick-pill.demo-happy:hover {
+    background: #ffd700;
+    color: #05030a;
+    box-shadow: 0 0 16px rgba(255, 215, 0, 0.7);
+  }
+  .quick-pill.demo-sad {
+    border-color: #00b0ff;
+    color: #80d8ff;
+    box-shadow: 0 0 10px rgba(0, 176, 255, 0.25);
+  }
+  .quick-pill.demo-sad:hover {
+    background: #00b0ff;
+    color: #05030a;
+    box-shadow: 0 0 16px rgba(0, 176, 255, 0.7);
+  }
+  .quick-pill.demo-angry {
+    border-color: #ff1744;
+    color: #ff8a80;
+    box-shadow: 0 0 10px rgba(255, 23, 68, 0.25);
+  }
+  .quick-pill.demo-angry:hover {
+    background: #ff1744;
+    color: #fff;
+    box-shadow: 0 0 16px rgba(255, 23, 68, 0.7);
   }
   .quick-pills {
     display: flex;
@@ -231,6 +355,7 @@
   <div id="langBadge" title="Tap to switch Language (English / العربية)">🌐 EN</div>
   <div id="micBadge" title="Microphone Status (Tap to unblock/allow)">🎙️ LISTENING</div>
   <div style="flex:1"></div>
+  <button id="chatToggleBtn" title="Toggle Command & Chat Bar (Hide / Show)">💬 CHAT</button>
   <button id="camBtn" title="See what AURA sees in Fullscreen">📷 CAMERA</button>
   <button id="settingsBtn" title="AURA Brain, Face Style & Hardware Settings">⚙️ SETTINGS</button>
 </div>
@@ -239,9 +364,19 @@
 <div id="caption"></div>
 <div id="notice"></div>
 
-<!-- Floating Bottom Quick-Action Buttons & Instant Command Input -->
-<div id="chatBar">
-  <div class="quick-pills">
+<!-- Floating Draggable Bottom Command & Chat Bar (Optional / Movable) -->
+<div id="chatBar" style="display:none;">
+  <div class="chat-header">
+    <div class="chat-drag-handle" id="chatDragHandle" title="Hold and drag to move command bar anywhere on screen">
+      <span class="drag-icon">⠿</span> <span class="drag-title">COMMAND / CHAT BAR (DRAG TO MOVE)</span>
+    </div>
+    <div class="chat-controls">
+      <button type="button" class="chat-btn-tool" id="chatPillsToggleBtn" title="Toggle Quick Action Pills">⚡ PILLS</button>
+      <button type="button" class="chat-btn-tool" id="chatResetPosBtn" title="Reset Position to Center Bottom">↺ RESET</button>
+      <button type="button" class="chat-btn-tool close" id="chatCloseBtn" title="Hide Command Box">✕ HIDE</button>
+    </div>
+  </div>
+  <div class="quick-pills" id="quickPillsContainer">
     <div class="quick-pill" onclick="handleTurn('Take me to the theatre')">🎭 Take me to Theatre</div>
     <div class="quick-pill" onclick="handleTurn('Move forward')">⬆ Forward</div>
     <div class="quick-pill" onclick="handleTurn('Turn left')">⬅ Left</div>
@@ -250,11 +385,17 @@
     <div class="quick-pill stop" onclick="handleTurn('Stop')">⏹ Stop</div>
     <div class="quick-pill" onclick="handleTurn('Wave')">👋 Wave</div>
     <div class="quick-pill" onclick="handleTurn('What do you see?')">📷 What do you see?</div>
+    <div class="quick-pill demo-happy" onclick="triggerEmotionDemo('HAPPY')" title="Test Celebration Effect">🎉 Celebrate</div>
+    <div class="quick-pill demo-sad" onclick="triggerEmotionDemo('SAD')" title="Test Falling Tears Effect">😢 Tears</div>
+    <div class="quick-pill demo-angry" onclick="triggerEmotionDemo('ANGRY')" title="Test Anime Anger Symbols Effect">💢 Angry</div>
   </div>
   <form class="input-row" onsubmit="event.preventDefault(); const inp=document.getElementById('chatInput'); if(inp && inp.value.trim()){ handleTurn(inp.value.trim()); inp.value=''; }">
     <input id="chatInput" type="text" placeholder="Speak aloud or type here (e.g. 'Take me to the theatre', 'Move forward')..." autocomplete="off" />
     <button type="submit" id="chatSendBtn">SEND ↵</button>
   </form>
+</div>
+<div id="chatFloatingPill" onclick="toggleChatBar(true)" title="Click to show Command & Chat Bar">
+  💬 COMMAND BAR
 </div>
 <video id="cam" playsinline muted style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none"></video>
 <canvas id="camPreview" width="160" height="120"></canvas>
@@ -477,16 +618,21 @@ const EXPR = {
   THINKING:  { closed: 0, happyArc: 0, eyeScale: .98, pupil: .34, browY: -.06, browTilt: .08,  browCurve: .24, mouthCurve: .0,  mouthW: .44, mouthOpen: .18, smirk: 0,   tilt: -4, blush: 0,  love: 0, glow: 1.05, think: 1, asym: .6 },
   SURPRISED: { closed: 0, happyArc: 0, eyeScale: 1.08,pupil: .54, browY: -.28, browTilt: 0,    browCurve: .50, mouthCurve: 0,   mouthW: .34, mouthOpen: .70, smirk: 0,   tilt: 0,  blush: .2, love: 0, glow: 1.3 },
   SAD:       { closed: 0, happyArc: 0, eyeScale: .96, pupil: .42, browY: .02,  browTilt: .30,  browCurve: .14, mouthCurve: -.48,mouthW: .62, mouthOpen: 0,   smirk: 0,   tilt: -4, blush: 0,  love: 0, glow: .82 },
+  ANGRY:     { closed: 0, happyArc: 0, eyeScale: 1.05, pupil: .28, browY: .14,  browTilt: -.45, browCurve: -.25, mouthCurve: -.55,mouthW: .65, mouthOpen: .20, smirk: 0,   tilt: 0,  blush: 0,  love: 0, glow: 1.45, angry: 1 },
   WINK:      { closed: 0, happyArc: 0, eyeScale: 1.0, pupil: .38, browY: -.12, browTilt: -.05, browCurve: .38, mouthCurve: .85, mouthW: .88, mouthOpen: .16, smirk: .28, tilt: 5,  blush: .75,love: 0, glow: 1.2, wink: 1 },
 };
-const ALIASES = { ATTENTIVE: 'NEUTRAL', IN_LOVE: 'LOVE', SPEAKING: 'NEUTRAL', SCEPTIC: 'CURIOUS', TIRED: 'SAD', BROKEN: 'SAD', DENYING: 'CURIOUS', JOY: 'HAPPY' };
-const live = { ...EXPR.SLEEP, think: 0, asym: 0, wink: 0, happyArc: 0, closed: 1, eyeScale: 1 };
+const ALIASES = { ATTENTIVE: 'NEUTRAL', IN_LOVE: 'LOVE', SPEAKING: 'NEUTRAL', SCEPTIC: 'CURIOUS', TIRED: 'SAD', BROKEN: 'SAD', DENYING: 'CURIOUS', JOY: 'HAPPY', MAD: 'ANGRY', FURIOUS: 'ANGRY', ANNOYED: 'ANGRY' };
+const live = { ...EXPR.SLEEP, think: 0, asym: 0, wink: 0, happyArc: 0, closed: 1, eyeScale: 1, angry: 0 };
 let emotion = 'SLEEP', emotionUntil = 0, baseState = 'SLEEP';
 
 function setEmotion(name, holdMs = 0) {
   name = (name || 'NEUTRAL').toUpperCase();
   name = ALIASES[name] || name;
   if (!EXPR[name]) name = 'NEUTRAL';
+  if (emotion !== name) {
+    if (name !== 'SAD') tearDrops.length = 0;
+    if (name !== 'ANGRY') steamPuffs.length = 0;
+  }
   emotion = name;
   emotionUntil = holdMs ? performance.now() + holdMs : 0;
   // A fresh expression should never be hidden by a blink in progress
@@ -542,10 +688,310 @@ function updateLive(now, dt) {
 function blinkAmount() { return blink.t < 0 ? 0 : Math.sin(Math.min(1, blink.t) * Math.PI); }
 
 let lastFrame = performance.now();
+/* =============================================================================
+   EMOTION VISUAL EFFECTS: CELEBRATION, FALLING TEARS, & ANIME ANGER SYMBOLS
+   ============================================================================= */
+const celebrationParticles = [];
+const tearDrops = [];
+const steamPuffs = [];
+let lastTearSpawn = 0;
+let lastSteamSpawn = 0;
+
+function spawnCelebrationParticle(cx, eyeY, spreadX, spreadY) {
+  const angle = Math.random() * Math.PI * 2;
+  const speed = 40 + Math.random() * 95;
+  const colors = ['#ffd700', '#00f0ff', '#ff4081', '#76ff03', '#ff9100', '#e040fb', '#ffffff'];
+  celebrationParticles.push({
+    x: cx + (Math.random() * 2 - 1) * spreadX,
+    y: eyeY + (Math.random() * 2 - 1) * spreadY,
+    vx: Math.cos(angle) * speed * 0.4,
+    vy: -Math.abs(Math.sin(angle) * speed) - 35,
+    size: 4 + Math.random() * 8,
+    rot: Math.random() * Math.PI * 2,
+    vrot: (Math.random() * 2 - 1) * 4,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    shape: Math.random() < 0.4 ? 'star' : (Math.random() < 0.7 ? 'diamond' : 'confetti'),
+    life: 0,
+    maxLife: 1.2 + Math.random() * 1.4,
+    wobble: Math.random() * Math.PI * 2
+  });
+}
+
+function spawnTear(side, ex, ey, r) {
+  tearDrops.push({
+    side,
+    startX: ex + (side === 'L' ? -r * 0.35 : r * 0.35),
+    x: ex + (side === 'L' ? -r * 0.35 : r * 0.35),
+    y: ey + r * 0.48,
+    vy: 15,
+    size: 3.5,
+    maxSize: 7.5,
+    swelling: true,
+    swellTimer: 0.35 + Math.random() * 0.3,
+    alpha: 0.95,
+    life: 0
+  });
+}
+
+function spawnSteamPuff(x, y) {
+  steamPuffs.push({
+    x: x + (Math.random() * 2 - 1) * 15,
+    y: y,
+    vx: (Math.random() * 2 - 1) * 12,
+    vy: -35 - Math.random() * 30,
+    size: 8 + Math.random() * 6,
+    maxSize: 22 + Math.random() * 12,
+    alpha: 0.7,
+    life: 0,
+    maxLife: 1.1 + Math.random() * 0.6
+  });
+}
+
+function drawSparkleStar(ctx, x, y, size, rot, color, alpha) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = size * 1.2;
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = (i * Math.PI) / 4;
+    const d = i % 2 === 0 ? size : size * 0.32;
+    i ? ctx.lineTo(Math.cos(a) * d, Math.sin(a) * d) : ctx.moveTo(Math.cos(a) * d, Math.sin(a) * d);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawDiamondSparkle(ctx, x, y, size, color, alpha) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = size;
+  ctx.beginPath();
+  ctx.moveTo(0, -size);
+  ctx.quadraticCurveTo(0, 0, size * 0.45, 0);
+  ctx.quadraticCurveTo(0, 0, 0, size);
+  ctx.quadraticCurveTo(0, 0, -size * 0.45, 0);
+  ctx.quadraticCurveTo(0, 0, 0, -size);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawConfettiFlake(ctx, x, y, size, rot, color, alpha) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  ctx.scale(Math.cos(rot * 2), 1);
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.fillStyle = color;
+  ctx.fillRect(-size / 2, -size / 4, size, size * 0.55);
+  ctx.restore();
+}
+
+function drawAngerMark(ctx, x, y, size, now) {
+  ctx.save();
+  ctx.translate(x, y);
+  const pulse = 1.0 + 0.16 * Math.sin(now * 0.009);
+  ctx.scale(pulse, pulse);
+  ctx.strokeStyle = '#ff1744';
+  ctx.lineWidth = Math.max(3.5, size * 0.15);
+  ctx.lineCap = 'round';
+  ctx.shadowColor = '#ff5252';
+  ctx.shadowBlur = size * 0.4;
+  
+  const span = size * 0.55;
+  const arcR = size * 0.32;
+
+  ctx.beginPath();
+  ctx.arc(-span * 0.5, -span * 0.5, arcR, 0, Math.PI * 0.5);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(span * 0.5, -span * 0.5, arcR, Math.PI * 0.5, Math.PI);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(span * 0.5, span * 0.5, arcR, Math.PI, Math.PI * 1.5);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(-span * 0.5, span * 0.5, arcR, Math.PI * 1.5, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.lineWidth = Math.max(1.8, size * 0.06);
+  ctx.strokeStyle = '#ffffff';
+  ctx.shadowBlur = 0;
+  ctx.beginPath();
+  ctx.arc(-span * 0.5, -span * 0.5, arcR * 0.7, 0.2, Math.PI * 0.4);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(span * 0.5, -span * 0.5, arcR * 0.7, Math.PI * 0.5 + 0.2, Math.PI - 0.2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function renderEmotionEffects(ctx, now, dt) {
+  const r = Math.min(H * 0.21, W * 0.135);
+  const spacing = Math.min(W * 0.19, r * 2.3);
+  const cx = W / 2 + gaze.x * r * 0.32;
+  const eyeY = H * 0.44 + gaze.y * r * 0.25;
+
+  // 1. HAPPY / CELEBRATION PARTICLES
+  if (emotion === 'HAPPY' || emotion === 'LOVE' || live.happyArc > 0.4) {
+    if (Math.random() < 0.45) {
+      spawnCelebrationParticle(cx, eyeY, spacing * 1.6, r * 1.2);
+    }
+  }
+
+  for (let i = celebrationParticles.length - 1; i >= 0; i--) {
+    const p = celebrationParticles[i];
+    p.life += dt;
+    if (p.life >= p.maxLife) {
+      celebrationParticles.splice(i, 1);
+      continue;
+    }
+    p.wobble += dt * 4;
+    p.x += (p.vx + Math.sin(p.wobble) * 20) * dt;
+    p.y += p.vy * dt;
+    p.rot += p.vrot * dt;
+    const progress = p.life / p.maxLife;
+    const alpha = Math.sin(progress * Math.PI) * 0.95;
+
+    if (p.shape === 'star') drawSparkleStar(ctx, p.x, p.y, p.size, p.rot, p.color, alpha);
+    else if (p.shape === 'diamond') drawDiamondSparkle(ctx, p.x, p.y, p.size, p.color, alpha);
+    else drawConfettiFlake(ctx, p.x, p.y, p.size, p.rot, p.color, alpha);
+  }
+
+  // 2. SAD FALLING TEARS
+  if (emotion === 'SAD' || live.browTilt > 0.2) {
+    if (now - lastTearSpawn > 320) {
+      lastTearSpawn = now;
+      const side = Math.random() < 0.5 ? 'L' : 'R';
+      const s = side === 'L' ? -1 : 1;
+      spawnTear(side, cx + s * spacing, eyeY, r);
+    }
+  }
+
+  for (let i = tearDrops.length - 1; i >= 0; i--) {
+    const t = tearDrops[i];
+    t.life += dt;
+    if (t.swelling) {
+      t.size = Math.min(t.maxSize, t.size + dt * 10);
+      if (t.life >= t.swellTimer) {
+        t.swelling = false;
+      }
+    } else {
+      t.vy += 280 * dt;
+      t.y += t.vy * dt;
+      const s = t.side === 'L' ? -1 : 1;
+      t.x += s * 14 * dt;
+    }
+
+    // Teardrop trail: a short, soft droplet tail (18-35px max), NOT stretching from infinity!
+    const tailTop = Math.max(t.startY || (eyeY + r * 0.45), t.y - 30);
+    if (t.y > tailTop) {
+      ctx.save();
+      const grad = ctx.createLinearGradient(t.x, tailTop, t.x, t.y);
+      grad.addColorStop(0, 'rgba(77, 208, 225, 0)');
+      grad.addColorStop(1, 'rgba(77, 208, 225, 0.5)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = t.size * 0.55;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(t.startX, tailTop);
+      ctx.lineTo(t.x, t.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    ctx.beginPath();
+    ctx.moveTo(0, -t.size * 1.4);
+    ctx.bezierCurveTo(t.size, -t.size * 0.3, t.size, t.size, 0, t.size);
+    ctx.bezierCurveTo(-t.size, t.size, -t.size, -t.size * 0.3, 0, -t.size * 1.4);
+    ctx.fillStyle = 'rgba(100, 220, 255, 0.88)';
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = t.size * 1.5;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(-t.size * 0.25, -t.size * 0.2, t.size * 0.25, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.shadowBlur = 0;
+    ctx.fill();
+    ctx.restore();
+
+    if (t.y > H * 0.88 || t.life > 2.8) {
+      tearDrops.splice(i, 1);
+    }
+  }
+
+  // 3. ANGRY SYMBOLS & STEAM
+  if (emotion === 'ANGRY' || live.angry > 0.4) {
+    const templeX = cx + spacing * 1.15;
+    const templeY = eyeY - r * 0.95;
+    drawAngerMark(ctx, templeX, templeY, r * 0.52, now);
+
+    if (now - lastSteamSpawn > 220) {
+      lastSteamSpawn = now;
+      spawnSteamPuff(templeX + (Math.random() * 2 - 1) * 10, templeY - 10);
+      spawnSteamPuff(cx - spacing * 1.15 + (Math.random() * 2 - 1) * 10, templeY - 10);
+    }
+  }
+
+  for (let i = steamPuffs.length - 1; i >= 0; i--) {
+    const s = steamPuffs[i];
+    s.life += dt;
+    if (s.life >= s.maxLife) {
+      steamPuffs.splice(i, 1);
+      continue;
+    }
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    const prog = s.life / s.maxLife;
+    const currentSize = s.size + (s.maxSize - s.size) * prog;
+    const alpha = (1 - prog) * s.alpha;
+
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.beginPath();
+    ctx.arc(0, 0, currentSize * 0.5, 0, Math.PI * 2);
+    ctx.arc(currentSize * 0.25, -currentSize * 0.2, currentSize * 0.35, 0, Math.PI * 2);
+    ctx.arc(-currentSize * 0.25, -currentSize * 0.15, currentSize * 0.32, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.35})`;
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function triggerEmotionDemo(emo) {
+  setEmotion(emo, 7000);
+  const msgs = {
+    HAPPY: { en: "Look, I'm celebrating! 🎉", ar: "شوفوا، أنا بحتفل ومبسوطة! 🎉" },
+    SAD: { en: "Look at my tears... 😢", ar: "شوفوا دموعي نازلة إزاي... 😢" },
+    ANGRY: { en: "I am really angry now! 💢", ar: "أنا متعصبة جداً دلوقتي! 💢" }
+  };
+  const msg = msgs[emo] ? (cfg.lang === 'ar-EG' ? msgs[emo].ar : msgs[emo].en) : '';
+  if (msg) speak(msg, emo);
+}
+window.triggerEmotionDemo = triggerEmotionDemo;
+
 function frame(now) {
   const dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
   updateLive(now, dt);
   draw(now);
+  renderEmotionEffects(ctx, now, dt);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -584,7 +1030,7 @@ function drawNordicCapsule(now) {
   ctx.rotate((live.tilt * Math.PI) / 180);
   ctx.translate(-cx, -H * 0.52);
 
-  const col = live.love > 0.4 ? '#ff55b8' : '#00f0ff';
+  const col = live.angry > 0.4 ? '#ff2244' : (live.love > 0.4 ? '#ff55b8' : '#00f0ff');
 
   ['L', 'R'].forEach(side => {
     const s = side === 'L' ? -1 : 1;
@@ -933,7 +1379,7 @@ function drawCozmoFace(now) {
     ctx.save();
     ctx.translate(ex, eyeY + (live.asym > 0.01 && side === 'L' ? -r * 0.1 : 0));
 
-    const col = live.love > 0.4 ? '#ff55b8' : '#00f0ff';
+    const col = live.angry > 0.4 ? '#ff2244' : (live.love > 0.4 ? '#ff55b8' : '#00f0ff');
     ctx.shadowColor = col; ctx.shadowBlur = r * 0.35 * live.glow;
     ctx.fillStyle = col;
 
@@ -1439,7 +1885,8 @@ function drawMouth(x, y, r, now) {
   const open = Math.min(1.2, live.mouthOpen + live.talk * 0.9);
   ctx.save();
   ctx.translate(x, y);
-  ctx.strokeStyle = '#00e5ff'; ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = r * 0.16 * live.glow;
+  const mouthCol = live.angry > 0.4 ? '#ff2244' : (live.love > 0.4 ? '#ff55b8' : '#00e5ff');
+  ctx.strokeStyle = mouthCol; ctx.shadowColor = mouthCol; ctx.shadowBlur = r * 0.16 * live.glow;
   ctx.lineWidth = Math.max(3, r * 0.045); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const lx = -w / 2, rx = w / 2, ly = -smirk * 0.4 - curve * r * 0.05, ry = smirk - curve * r * 0.05;
   if (open < 0.06) {
@@ -1640,7 +2087,7 @@ async function speak(text, emo = 'NEUTRAL', { holdAfter = 2500, firstAudioB64 = 
   text = (text || '').trim(); if (!text) return;
   ensureAudio();
 
-  // 1. Mark speaking state and abort recognition during speech so mic doesn't capture own speaker
+  // 1. Mark speaking state and keep recognition active so user can interrupt at any instant!
   isSpeaking = true;
   recTaintedBySpeaker = true;
   lastInterim = '';
@@ -1648,9 +2095,9 @@ async function speak(text, emo = 'NEUTRAL', { holdAfter = 2500, firstAudioB64 = 
   spokenSoFar = '';
   updateMicBadge('speaking');
 
-  if (rec && recRunning) {
-    try { rec.abort(); } catch (e) {}
-    recRunning = false;
+  // Keep recognition running or restart it to allow instant voice barge-in
+  if (awake && !recRunning) {
+    try { startRec(); } catch (e) {}
   }
 
   const ctrl = new AbortController(); speak.ctrl = ctrl;
@@ -2095,17 +2542,23 @@ async function handleTurn(userText, context) {
 
   // Trigger physical arm wave on ESP32 when guest asks AURA to wave
   // Instant Emotional Expression Commands (Zero Lag)
-  if (/\b(be sad|act sad|look sad|get sad|خليكي حزينة|ازعلي|كوني حزينة)\b/i.test(userText)) {
+  if (/\b(be sad|act sad|look sad|get sad|cry|tears|weep|عيطي|ازعلي|ابكي|حزينة|دموع)\b/i.test(userText)) {
     const ar = isArabic(userText);
-    const t = ar ? 'حاضر.. زعلت اهو! بس يا رب أكون برسم البسمة على وشك بعدين.' : "Oh no, why would you want me to be sad? But okay, here is my sad face.";
+    const t = ar ? 'حاضر.. دموعي نازلة اهيه، بس يا رب أكون برسم البسمة على وشك بعدين!' : "Oh no! Look at my tears... but I hope to make you smile again soon!";
     history.push({ role: 'user', text: userText }, { role: 'model', text: t });
-    return speak(t, 'SAD', { holdAfter: 4000 });
+    return speak(t, 'SAD', { holdAfter: 6000 });
   }
-  if (/\b(be happy|smile|look happy|be glad|خليكي مبسوطة|افرحي|ابتسمي|اضحكي)\b/i.test(userText)) {
+  if (/\b(be happy|smile|look happy|be glad|celebrate|party|cheer|خليكي مبسوطة|افرحي|احتفلي|ابتسمي|اضحكي|فرفشي)\b/i.test(userText)) {
     const ar = isArabic(userText);
-    const t = ar ? 'دايماً مبسوطة وفرحانة بوجودي معاكم في إيجست!' : "I am always delighted and so happy to meet you at E-JUST!";
+    const t = ar ? 'دايماً مبسوطة وبحتفل بوجودي معاكم في إيجست! شوفوا الاحتفال والنجوم! 🎉' : "I am so happy and celebrating with you at E-JUST! Look at the sparkles! 🎉";
     history.push({ role: 'user', text: userText }, { role: 'model', text: t });
-    return speak(t, 'HAPPY', { holdAfter: 3500 });
+    return speak(t, 'HAPPY', { holdAfter: 6000 });
+  }
+  if (/\b(be angry|act angry|get angry|furious|mad|rage|annoyed|اغضبي|اتعصبي|خليكي متعصبة|تعصبي|اتغاظي)\b/i.test(userText)) {
+    const ar = isArabic(userText);
+    const t = ar ? 'أنا متعصبة جداً دلوقتي! 💢 احترسوا مني!' : "I am really angry right now! 💢 Watch out!";
+    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
+    return speak(t, 'ANGRY', { holdAfter: 6000 });
   }
   if (/\b(wink|blink at me|غمزي|اغمزي)\b/i.test(userText)) {
     const ar = isArabic(userText);
@@ -2277,6 +2730,19 @@ const STRICT_BARGE_RE = /\b(stop|wait|hold on|hey aura|aura|excuse me|pause|enou
 function normWord(w) { return (w || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''); }
 function words(t) { return (t || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length > 1); }
 
+function isSelfEcho(heardText, replyText) {
+  if (!replyText || !heardText) return false;
+  if (STRICT_BARGE_RE.test(heardText) || isDirectVoiceCommand(heardText)) return false;
+  const hWords = words(heardText);
+  if (hWords.length === 0) return true;
+  const rWords = new Set(words(replyText));
+  let matching = 0;
+  for (const w of hWords) {
+    if (rWords.has(w)) matching++;
+  }
+  return (matching / hWords.length) >= 0.55;
+}
+
 function scheduleRestart(delay = 90) {
   clearTimeout(restartListenTimer);
   restartListenTimer = setTimeout(() => {
@@ -2366,13 +2832,20 @@ function initRecognition() {
     const rawHeard = (final || interim).trim();
     if (!rawHeard) return;
 
-    // If AURA is speaking or this recognition session started while her speaker was active:
-    // ONLY allow explicit barge-in keywords (stop, wait, hey aura, استنى, بس, etc.) and NEVER send speaker audio to chat!
-    if (isSpeaking || (performance.now() - lastSpeechEnd < 220)) {
-      lastInterim = '';
-      clearTimeout(interimCommitTimer);
-      bargeIn();
-      return;
+    // IMMEDIATE BARGE-IN INTERRUPTION: If AURA is currently speaking
+    if (isSpeaking) {
+      if (!isSelfEcho(rawHeard, currentReply)) {
+        log('[BARGE-IN] Interrupted by user voice:', rawHeard);
+        bargeIn();
+        if (isDirectVoiceCommand(rawHeard) || rawHeard.length >= 3) {
+          caption(rawHeard, true);
+          commitUserUtterance(rawHeard);
+        }
+        return;
+      } else {
+        // Ignored self-echo of speaker output
+        return;
+      }
     }
 
     if (emotion !== 'THINKING') {
@@ -2449,8 +2922,7 @@ function initRecognition() {
       commitUserUtterance(toSend);
     }
     lastInterim = '';
-    if (awake && !isSpeaking) scheduleRestart(100);
-    else if (awake && isSpeaking) scheduleRestart(250);
+    if (awake) scheduleRestart(80);
   };
 }
 
@@ -2471,7 +2943,7 @@ function startRec() {
 }
 
 function setLang(l) { cfg.lang = l; store.set('lang', l); if (rec) { try { rec.abort(); } catch (e) {} } }
-setInterval(() => { if (awake && !recRunning && !isSpeaking) startRec(); }, 1200);   // watchdog: never stay deaf
+setInterval(() => { if (awake && !recRunning) startRec(); }, 900);   // watchdog: never stay deaf
 
 /* =============================================================================
    5. EYES — camera face tracking (MediaPipe, with a motion/skin fallback)
@@ -2704,11 +3176,9 @@ function trackLoop(now = performance.now()) {
     const close = f.size > 0.16;
     if (close && now - faceSince > 900 && !visitorPresent) {
       visitorPresent = true;
-      if (awake && !isSpeaking && !thinking && now - lastGreet > 45000 && now - lastSpeechEnd > 8000) {
-        lastGreet = now;
-        const t = cfg.lang === 'ar-EG' ? 'أهلاً بيك! نورت قمة IEEE RAS. أقدر أساعدك في إيه؟' : "Hi there! Welcome to the IEEE RAS MENA Summit. How can I help you?";
-        history.push({ role: 'model', text: t });
-        speak(t, 'HAPPY');
+      // Make friendly eye contact and gentle smile without unprompted speech
+      if (awake && !isSpeaking && !thinking) {
+        setEmotion('HAPPY', 2000);
       }
     }
   } else {
@@ -3125,6 +3595,7 @@ async function wake() {
   if (awake) return;
   awake = true;
   $('wake').style.display = 'none';
+  if (chatBarVisible && $('chatBar')) $('chatBar').style.display = 'flex';
   ensureAudio();
   prewarmClientAudio();
   // ONLY camera option has fullscreen capability; normal waking stays within standard canvas
@@ -3136,11 +3607,9 @@ async function wake() {
   initCamera();
   updateLangBadge();
   updateMicBadge('listening');
-  setTimeout(() => {
-    const t = cfg.lang === 'ar-EG' ? 'أهلاً! أنا أورا، أقدر أساعدك في إيه؟' : "Hi! I'm AURA, how can I help you?";
-    history.push({ role: 'model', text: t });
-    speak(t, 'HAPPY');
-  }, 350);
+  // Clean wake: smile warmly and enter listening mode without unprompted speech
+  setEmotion('HAPPY', 1200);
+  caption(cfg.lang === 'ar-EG' ? 'أهلاً! قول "هاي" أو اسأل أي سؤال 🎙️' : 'Hi! Say "Hello" or ask any question 🎙️', false);
 }
 
 // Top Bar & Camera Action Handlers
@@ -3189,6 +3658,7 @@ $('micBadge').onclick = async (e) => {
   ensureAudio();
   awake = true;
   $('wake').style.display = 'none';
+  if (chatBarVisible && $('chatBar')) $('chatBar').style.display = 'flex';
   try {
     const s = await navigator.mediaDevices.getUserMedia({ audio: true });
     s.getTracks().forEach(t => t.stop()); // release audio hardware immediately
@@ -3200,29 +3670,152 @@ $('micBadge').onclick = async (e) => {
 
 $('wake').onclick = () => wake();
 
-// Tap = wake or instant interrupt (barge-in) while speaking. Long-press (1 s) = settings.
+// Tap / Click anywhere on canvas = wake or instant interrupt (barge-in) while speaking. Long-press (1 s) = settings.
 let pressTimer = null, lastTap = 0;
-canvas.addEventListener('pointerdown', () => {
+canvas.addEventListener('pointerdown', (e) => {
   pressTimer = setTimeout(() => { pressTimer = null; openSettings(); }, 1000);
 });
-canvas.addEventListener('pointerup', () => {
+canvas.addEventListener('pointerup', (e) => {
   if (!pressTimer) return; clearTimeout(pressTimer); pressTimer = null;
   if (!awake) return wake();
   ensureAudio();
   if (isSpeaking || thinking) {
     bargeIn();
+    notice(cfg.lang === 'ar-EG' ? 'وقفت — سامعاك 🎙️' : 'Stopped — Listening to you 🎙️', 1500);
     return;
   }
   const now = performance.now();
-  setEmotion('HAPPY', 1200);   // a tap when idle is a friendly "boop"
+  setEmotion('HAPPY', 1200);
   lastTap = now;
 });
 canvas.addEventListener('pointerleave', () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
+canvas.addEventListener('click', () => {
+  if (isSpeaking || thinking) {
+    bargeIn();
+    notice(cfg.lang === 'ar-EG' ? 'وقفت — سامعاك 🎙️' : 'Stopped — Listening to you 🎙️', 1500);
+  }
+});
+
+// Spacebar / Escape to instantly interrupt speech
+window.addEventListener('keydown', (e) => {
+  if ((e.code === 'Space' || e.code === 'Escape') && (isSpeaking || thinking) && document.activeElement !== $('chatInput')) {
+    e.preventDefault();
+    bargeIn();
+    notice(cfg.lang === 'ar-EG' ? 'وقفت — سامعاك 🎙️' : 'Stopped — Listening to you 🎙️', 1500);
+  }
+});
+
 document.body.addEventListener('pointerup', (e) => {
-  if (!awake && !e.target.closest('#settings') && !e.target.closest('#topBar')) {
+  if (!awake && !e.target.closest('#settings') && !e.target.closest('#topBar') && !e.target.closest('#chatBar')) {
     wake();
   }
 });
+
+/* =============================================================================
+   DRAGGABLE & OPTIONAL COMMAND BAR CONTROLLER
+   ============================================================================= */
+let chatBarVisible = true;
+let quickPillsVisible = true;
+
+function toggleChatBar(forceShow = null) {
+  const bar = $('chatBar');
+  const pill = $('chatFloatingPill');
+  const btn = $('chatToggleBtn');
+  if (!bar) return;
+  chatBarVisible = (forceShow !== null) ? forceShow : !chatBarVisible;
+  if (chatBarVisible && awake) {
+    bar.style.display = 'flex';
+    bar.classList.remove('chat-hidden');
+    if (pill) pill.style.display = 'none';
+    if (btn) btn.classList.add('active');
+  } else {
+    bar.style.display = 'none';
+    bar.classList.add('chat-hidden');
+    if (pill && awake) pill.style.display = 'block';
+    if (btn) btn.classList.remove('active');
+  }
+}
+window.toggleChatBar = toggleChatBar;
+
+function resetChatPosition() {
+  const bar = $('chatBar');
+  if (!bar) return;
+  bar.style.top = 'auto';
+  bar.style.bottom = '14px';
+  bar.style.left = '50%';
+  bar.style.transform = 'translateX(-50%)';
+}
+window.resetChatPosition = resetChatPosition;
+
+function toggleQuickPills() {
+  const c = $('quickPillsContainer');
+  const btn = $('chatPillsToggleBtn');
+  if (!c) return;
+  quickPillsVisible = !quickPillsVisible;
+  c.style.display = quickPillsVisible ? 'flex' : 'none';
+  if (btn) btn.textContent = quickPillsVisible ? '⚡ PILLS' : '⚡ EXPAND';
+}
+window.toggleQuickPills = toggleQuickPills;
+
+function initDraggableChat() {
+  const bar = $('chatBar');
+  const handle = $('chatDragHandle') || bar;
+  if (!bar || !handle) return;
+
+  let isDragging = false;
+  let startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('input, button, .quick-pill')) return;
+    isDragging = true;
+    handle.setPointerCapture(e.pointerId);
+
+    const rect = bar.getBoundingClientRect();
+    startX = e.clientX;
+    startY = e.clientY;
+    initialLeft = rect.left;
+    initialTop = rect.top;
+
+    bar.style.bottom = 'auto';
+    bar.style.transform = 'none';
+    bar.style.left = initialLeft + 'px';
+    bar.style.top = initialTop + 'px';
+    bar.classList.add('dragging');
+    e.preventDefault();
+  });
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    const maxW = window.innerWidth - bar.offsetWidth - 10;
+    const maxH = window.innerHeight - bar.offsetHeight - 10;
+
+    const newLeft = Math.max(10, Math.min(maxW, initialLeft + dx));
+    const newTop = Math.max(10, Math.min(maxH, initialTop + dy));
+
+    bar.style.left = newLeft + 'px';
+    bar.style.top = newTop + 'px';
+  });
+
+  const stopDrag = (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+    bar.classList.remove('dragging');
+  };
+
+  handle.addEventListener('pointerup', stopDrag);
+  handle.addEventListener('pointercancel', stopDrag);
+
+  if ($('chatToggleBtn')) $('chatToggleBtn').onclick = (e) => { e.stopPropagation(); toggleChatBar(); };
+  if ($('chatCloseBtn')) $('chatCloseBtn').onclick = (e) => { e.stopPropagation(); toggleChatBar(false); };
+  if ($('chatResetPosBtn')) $('chatResetPosBtn').onclick = (e) => { e.stopPropagation(); resetChatPosition(); };
+  if ($('chatPillsToggleBtn')) $('chatPillsToggleBtn').onclick = (e) => { e.stopPropagation(); toggleQuickPills(); };
+}
+
+setTimeout(initDraggableChat, 200);
 
 function updateBrainSettingsUi() {
   const p = $('sProvider') ? $('sProvider').value : 'gemini';
