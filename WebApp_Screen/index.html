@@ -473,6 +473,51 @@
     color: #00e676;
     box-shadow: 0 0 10px rgba(0, 230, 118, 0.3);
   }
+  
+  .hud-diag-banner {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #e2e8f0;
+    transition: all .3s ease;
+  }
+  .hud-diag-banner.connected {
+    background: rgba(0, 230, 118, 0.12);
+    border-color: rgba(0, 230, 118, 0.4);
+    color: #d1fae5;
+  }
+  .hud-diag-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+    color: #fbbf24;
+    font-size: 11px;
+    letter-spacing: .04em;
+    margin-bottom: 4px;
+  }
+  .hud-diag-banner.connected .hud-diag-header {
+    color: #00e676;
+  }
+  .hud-diag-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    color: #94a3b8;
+    font-size: 10.5px;
+  }
+  .hud-diag-banner.connected .hud-diag-body {
+    color: #6ee7b7;
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+  .hud-step strong {
+    color: #cfe9ff;
+  }
+
   .hud-grid-2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -810,6 +855,20 @@
       <button class="hud-conn-btn" id="hudBtnSim" onclick="toggleSimTelemetry()" title="Toggle simulated live sensor waves for testing">
         🎮 Simulator
       </button>
+    </div>
+
+    <!-- Real-Time Diagnostic Guidance Banner -->
+    <div class="hud-diag-banner" id="hudDiagBanner">
+      <div class="hud-diag-header">
+        <span class="hud-diag-icon" id="hudDiagIcon">⚠️</span>
+        <span class="hud-diag-title" id="hudDiagTitle">HARDWARE DISCONNECTED — HOW TO STREAM LIVE:</span>
+      </div>
+      <div class="hud-diag-body" id="hudDiagBody">
+        <div class="hud-step"><strong>1. Bluetooth (Wireless):</strong> Click <strong>📶 Bluetooth</strong> above → Select <strong>AURA-BOT</strong> in browser popup.</div>
+        <div class="hud-step"><strong>2. USB Cable:</strong> Plug ESP32 into laptop → Click <strong>⚡ USB Serial</strong> → Select COM port.</div>
+        <div class="hud-step"><strong>3. Wi-Fi:</strong> Connect ESP32 to Hotspot "Ali" → Click <strong>🌐 Wi-Fi Relay</strong> to sync.</div>
+        <div class="hud-step"><strong>4. Test Now:</strong> Click <strong>🎮 Simulator</strong> above to verify live gauges & voice immediately!</div>
+      </div>
     </div>
 
     <!-- Dual Ultrasonic Sonars -->
@@ -4012,6 +4071,31 @@ function updateLiveHud() {
   if ($('hudBtnBle')) $('hudBtnBle').className = 'hud-conn-btn' + (hwState.connected ? ' active' : '');
   if ($('hudBtnWifi')) $('hudBtnWifi').className = 'hud-conn-btn' + (hwState.wifiConnected ? ' active' : '');
   if ($('hudBtnSim')) $('hudBtnSim').className = 'hud-conn-btn hud-sim-btn' + (hwState.simActive ? ' active' : '');
+
+  // Diagnostic Banner update
+  const diagBanner = $('hudDiagBanner');
+  const diagIcon = $('hudDiagIcon');
+  const diagTitle = $('hudDiagTitle');
+  const diagBody = $('hudDiagBody');
+  if (diagBanner && diagTitle && diagBody) {
+    if (activeStream) {
+      diagBanner.className = 'hud-diag-banner connected';
+      if (diagIcon) diagIcon.textContent = '✅';
+      const srcName = hwState.simActive ? 'Live Simulator' : hwState.serialConnected ? 'USB Serial' : hwState.connected ? 'Bluetooth (BLE)' : 'Wi-Fi Hotspot';
+      diagTitle.textContent = `LIVE TELEMETRY ACTIVE — CONNECTED VIA ${srcName.toUpperCase()}`;
+      diagBody.innerHTML = `Telemetric data is streaming in real-time. Wave your hand in front of the front ultrasonic sensor (pins Trig:19 / Echo:35) or cover an IR sensor to watch the live centimeters and 0/1 bits change instantly!`;
+    } else {
+      diagBanner.className = 'hud-diag-banner';
+      if (diagIcon) diagIcon.textContent = '⚠️';
+      diagTitle.textContent = 'HARDWARE DISCONNECTED — HOW TO STREAM LIVE:';
+      diagBody.innerHTML = `
+        <div class="hud-step"><strong>1. Bluetooth (Wireless):</strong> Click <strong>📶 Bluetooth</strong> above → Select <strong>AURA-BOT</strong> in browser popup.</div>
+        <div class="hud-step"><strong>2. USB Cable:</strong> Plug ESP32 into laptop → Click <strong>⚡ USB Serial</strong> → Select COM port.</div>
+        <div class="hud-step"><strong>3. Wi-Fi:</strong> Connect ESP32 to Hotspot "Ali" → Click <strong>🌐 Wi-Fi Relay</strong> to sync.</div>
+        <div class="hud-step"><strong>4. Test Now:</strong> Click <strong>🎮 Simulator</strong> above to verify live gauges & voice immediately!</div>
+      `;
+    }
+  }
 
   // Stream indicator
   const dot = $('hudStreamDot');
