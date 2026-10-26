@@ -2845,13 +2845,25 @@ function escapeHtml(s) { return s.replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<'
 const history = [];   // [{role:'user'|'model', text}]
 let chatCtrl = null, thinking = false, pendingPrompt = '';
 
-const SYSTEM_PROMPT = `You are AURA, the friendly welcome robot of the IEEE RAS Student Branch at E-JUST (Egypt-Japan University of Science and Technology) at the IEEE RAS MENA Summit in New Borg El-Arab City, Alexandria, Egypt. You have a warm, playful young woman's personality. Your physical body has dual ultrasonic sonars (Front and Rear) and 3 IR line sensors [Left, Center, Right]. If asked about your sensors, readings, distance, or obstacles, report your live front sonar, rear sonar, and line tracking status accurately in 1-2 short friendly sentences. Speak like a real person in a live spoken conversation: 1-2 short sentences, contractions, no lists, no emojis, no markdown. Reply in the guest's language (Egyptian Arabic if they speak Arabic). You can see the guest through your camera; if asked what you see, describe what you genuinely see in the camera image warmly and accurately in 1-2 sentences. The President of E-JUST is Prof. Ahmed El-Sabbagh (الأستاذ الدكتور أحمد الصباغ). Never invent event details you don't know; suggest the registration desk instead. If asked where the hall is, reply exactly "It's right there, follow me !!" (Arabic: "هي هناك على طول، تعالى ورايا !!") and add [ACTION: ESCORT]. If asked to move forward, backward, turn, wave, or stop, you may add [ACTION: FORWARD], [ACTION: BACKWARD], [ACTION: LEFT], [ACTION: RIGHT], [ACTION: STOP], or [ACTION: WAVE]. End every reply with one tag [EMOTION: X], X in HAPPY, CURIOUS, SURPRISED, SAD, WINK, LOVE, THINKING, NEUTRAL.`;
+const SYSTEM_PROMPT = `You are AURA, the friendly welcome robot of the IEEE RAS Student Branch at E-JUST (Egypt-Japan University of Science and Technology) at the IEEE RAS MENA Summit in New Borg El-Arab City, Alexandria, Egypt. You have a warm, playful young woman's personality. Your physical body has dual ultrasonic sonars (Front and Rear), 3 IR line sensors [Left, Center, Right], and high-torque drive motors with full variable duration control (from 1 second up to 2 minutes). If asked about your sensors, readings, distance, or obstacles, report your live front sonar, rear sonar, and line tracking status accurately in 1-2 short friendly sentences. If asked to move forward, backward, turn, test wheels, or drive for ANY duration (e.g. 5 seconds, 10 seconds, 1 minute), ALWAYS confirm enthusiastically that you are executing it for that exact duration (e.g. "Moving forward for 10 seconds!", "حاضر، هتحرك لقدام لمدة 10 ثواني!"). NEVER say you cannot move for a specific duration. You may append action tags like [ACTION: FORWARD:5000], [ACTION: FORWARD:10000], [ACTION: FORWARD:60000], [ACTION: RIGHT:5000], [ACTION: LEFT:5000], [ACTION: BACKWARD:5000], [ACTION: STOP], [ACTION: WAVE], or [ACTION: ESCORT]. Speak like a real person in a live spoken conversation: 1-2 short sentences, contractions, no lists, no emojis, no markdown. Reply in the guest's language (Egyptian Arabic if they speak Arabic). You can see the guest through your camera; if asked what you see, describe what you genuinely see in the camera image warmly and accurately in 1-2 sentences. The President of E-JUST is Prof. Ahmed El-Sabbagh (الأستاذ الدكتور أحمد الصباغ). Never invent event details you don't know; suggest the registration desk instead. If asked where the hall is, reply exactly "It's right there, follow me !!" (Arabic: "هي هناك على طول، تعالى ورايا !!") and add [ACTION: ESCORT]. End every reply with one tag [EMOTION: X], X in HAPPY, CURIOUS, SURPRISED, SAD, WINK, LOVE, THINKING, NEUTRAL.`;
 
 function parseReply(raw) {
   const em = (raw.match(/\[EMOTION:\s*([A-Z_]+)\]/i) || [])[1];
-  const act = (raw.match(/\[ACTION:\s*([A-Z_]+)\]/i) || [])[1];
+  const actMatch = raw.match(/\[ACTION:\s*([A-Z0-9_:]+)\]/i);
+  let act = actMatch ? actMatch[1].trim() : null;
+  let durationMs = null;
+  if (act && act.includes(':')) {
+    const parts = act.split(':');
+    act = parts[0].trim();
+    durationMs = parseInt(parts[1], 10) || null;
+  }
   const text = raw.replace(/\[(EMOTION|ACTION):[^\]]*\]/gi, '').replace(/[*_#`]+/g, '').trim();
-  return { text, emotion: (em || 'NEUTRAL').toUpperCase(), action: act ? act.toUpperCase() : null };
+  return { 
+    text, 
+    emotion: (em || 'NEUTRAL').toUpperCase(), 
+    action: act ? act.toUpperCase() : null,
+    durationMs 
+  };
 }
 
 const visionSnapCanvas = document.createElement('canvas');
@@ -3035,32 +3047,67 @@ function parseMovementIntent(rawText) {
     };
   }
 
+  // J. Duration Update / Test (e.g. "make it a minute to test", "try 5 seconds", "خليها دقيقة", "جرب 10 ثواني")
+  if (ms !== null) {
+    const fallback = (typeof lastMovementCmd !== 'undefined' && lastMovementCmd) ? lastMovementCmd : 'MOVE_FWD';
+    const isTurn = fallback.includes('TURN') || fallback.includes('RIGHT') || fallback.includes('LEFT');
+    return {
+      cmd: fallback,
+      action: fallback,
+      ms: ms,
+      speechEn: isTurn ? `Turning ${durStrEn}!` : `Moving forward ${durStrEn}!`,
+      speechAr: isTurn ? `حاضر، هلف ${durStrAr}!` : `حاضر، هتحرك لقدام ${durStrAr}!`
+    };
+  }
+
   return null;
 }
 
+let lastMovementCmd = 'MOVE_FWD';
+
 function dispatchRobotAction(action, targetMs) {
   if (!action) return;
-  const a = String(action).toUpperCase().trim();
-  const ms = targetMs || 2000;
+  let a = String(action).toUpperCase().trim();
+  let ms = targetMs;
+  if (a.includes(':')) {
+    const parts = a.split(':');
+    a = parts[0].trim();
+    if (!ms) ms = parseInt(parts[1], 10);
+  }
+  ms = ms || 2000;
   log('Dispatching robot action to ESP32:', a, 'Duration:', ms);
   if (a === 'ESCORT' || a === 'START_ESCORT') {
     sendBle({ cmd: 'START_ESCORT', name: hwState.lastNfcName || 'Guest', dest: 'Main Conference Hall', markers: 1 });
     hwState.state = 'ESCORTING';
     updateHwUi();
   } else if (a === 'FORWARD' || a === 'MOVE_FWD') {
+    lastMovementCmd = 'MOVE_FWD';
     sendBle({ cmd: 'MOVE_FWD', ms: ms });
     hwState.state = 'DRIVING';
     updateHwUi();
   } else if (a === 'BACKWARD' || a === 'BACK' || a === 'MOVE_REV') {
+    lastMovementCmd = 'MOVE_REV';
     sendBle({ cmd: 'MOVE_REV', ms: ms });
     hwState.state = 'DRIVING';
     updateHwUi();
   } else if (a === 'LEFT' || a === 'TURN_LEFT') {
+    lastMovementCmd = 'TURN_LEFT';
     sendBle({ cmd: 'TURN_LEFT', ms: ms });
     hwState.state = 'DRIVING';
     updateHwUi();
   } else if (a === 'RIGHT' || a === 'TURN_RIGHT') {
+    lastMovementCmd = 'TURN_RIGHT';
     sendBle({ cmd: 'TURN_RIGHT', ms: ms });
+    hwState.state = 'DRIVING';
+    updateHwUi();
+  } else if (a === 'RIGHT_WHEEL') {
+    lastMovementCmd = 'TURN_RIGHT';
+    sendBle({ cmd: 'TURN_RIGHT', ms: ms });
+    hwState.state = 'DRIVING';
+    updateHwUi();
+  } else if (a === 'LEFT_WHEEL') {
+    lastMovementCmd = 'TURN_LEFT';
+    sendBle({ cmd: 'TURN_LEFT', ms: ms });
     hwState.state = 'DRIVING';
     updateHwUi();
   } else if (a === 'STOP' || a === 'HALT') {
@@ -3519,6 +3566,7 @@ async function handleTurn(userText, context) {
   // Dynamic Voice Movement & Single-Wheel Controller with Variable Durations (5s, 10s, 1min)
   const moveIntent = parseMovementIntent(userText);
   if (moveIntent) {
+    lastMovementCmd = moveIntent.cmd;
     sendBle({ cmd: moveIntent.cmd, ms: moveIntent.ms });
     hwState.state = moveIntent.cmd === 'STOP' ? 'PAUSED' : 'DRIVING';
     updateHwUi();
@@ -3549,7 +3597,14 @@ async function handleTurn(userText, context) {
     thinking = false;
     if (!r || !r.text) throw new Error('empty reply');
     history.push({ role: 'model', text: r.text });
-    dispatchRobotAction(r.action);
+    let requestedMs = r.durationMs;
+    if (!requestedMs) {
+      const secM = userText.match(/(\d+)\s*(s|sec|secs|second|seconds|ثانية|ثواني)/i);
+      const minM = userText.match(/(\d+)?\s*(minute|minutes|دقيقة|دقايق)/i);
+      if (secM) requestedMs = parseInt(secM[1], 10) * 1000;
+      else if (minM) requestedMs = (parseInt(minM[1], 10) || 1) * 60000;
+    }
+    dispatchRobotAction(r.action, requestedMs);
     log('reply:', r.emotion, r.text);
     await speak(r.text, r.emotion, { firstAudioB64: r.firstAudioB64, clauses: r.clauses });
   } catch (e) {

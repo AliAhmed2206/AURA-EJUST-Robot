@@ -91,15 +91,21 @@ THE HALL RULE (very important)
   Arabic: هي هناك على طول، تعالى ورايا !!
   and add the tag [ACTION: ESCORT].
 
-PHYSICAL ROBOT ACTIONS (Bluetooth ESP32 Control)
-- If the guest asks you to move, turn, drive, wave, or stop, you can include one action tag to command your physical hardware:
-  - Move forward: [ACTION: FORWARD]
-  - Move backward: [ACTION: BACKWARD]
-  - Turn left: [ACTION: LEFT]
-  - Turn right: [ACTION: RIGHT]
-  - Stop / brake: [ACTION: STOP]
-  - Wave hand / arm: [ACTION: WAVE]
-  - Escort to hall: [ACTION: ESCORT]
+PHYSICAL ROBOT ACTIONS & MOTOR CONTROL (Wi-Fi ESP32 Hardware)
+- You have complete active motor control over your physical robot chassis with customizable durations (from 1 second up to 2 minutes)!
+- If the guest asks you to move, drive, turn, test wheels, or spin for ANY duration (e.g. 5 seconds, 10 seconds, 1 minute, 30 seconds):
+  - ALWAYS confirm enthusiastically that you are executing it for that exact duration! (e.g. "Moving forward for 10 seconds!", "حاضر، هتحرك لقدام لمدة 10 ثواني!", "Turning on the right wheel for 5 seconds!")
+  - NEVER say or imply that you cannot move for a specific time or duration. You CAN move for any requested duration!
+  - Include the action tag with the duration in milliseconds, or standard tag:
+    - [ACTION: FORWARD:5000] (or 10000, 60000, etc.)
+    - [ACTION: BACKWARD:5000]
+    - [ACTION: LEFT:5000]
+    - [ACTION: RIGHT:5000]
+    - [ACTION: RIGHT_WHEEL:5000]
+    - [ACTION: LEFT_WHEEL:5000]
+    - [ACTION: STOP]
+    - [ACTION: WAVE]
+    - [ACTION: ESCORT]
 Only add an action tag when the guest explicitly asks for physical robot movement or greeting gestures.
 
 ROBOT SENSORS & TELEMETRY
@@ -709,17 +715,20 @@ async def send_esp32_command(request: Request):
     
     ms = body.get("ms")
     if ms:
-        cmd_payload = f'{{"cmd":"{cmd_str}","ms":{int(ms)}}}'
+        try:
+            ms_val = int(ms)
+        except Exception:
+            ms_val = 1500
+        cmd_item = {"cmd": cmd_str, "ms": ms_val}
     else:
-        cmd_payload = cmd_str
+        cmd_item = {"cmd": cmd_str}
         
-    esp32_cmd_queue.append(cmd_payload)
+    esp32_cmd_queue.append(cmd_item)
     if len(esp32_cmd_queue) > 20:
         esp32_cmd_queue.pop(0)
         
-    print(f"[ESP32 QUEUE] Queued: {cmd_payload} (Queue size: {len(esp32_cmd_queue)})")
-    return {"status": "queued", "cmd": cmd_payload, "queue_len": len(esp32_cmd_queue)}
-
+    print(f"[ESP32 QUEUE] Queued: {cmd_item} (Queue size: {len(esp32_cmd_queue)})")
+    return {"status": "queued", "cmd": cmd_item, "queue_len": len(esp32_cmd_queue)}
 @app.get("/api/esp32/command")
 def get_esp32_command(token: Optional[str] = None, request: Request = None):
     """
@@ -737,11 +746,25 @@ def get_esp32_command(token: Optional[str] = None, request: Request = None):
     esp32_state["status"] = "CONNECTED"
     
     if esp32_cmd_queue:
-        cmd = esp32_cmd_queue.pop(0)
-        print(f"[ESP32 DISPATCH] Sent to ESP32: {cmd}")
-        return {"cmd": cmd, "has_more": len(esp32_cmd_queue) > 0}
+        item = esp32_cmd_queue.pop(0)
+        has_more = len(esp32_cmd_queue) > 0
+        if isinstance(item, dict):
+            resp = dict(item)
+            resp["has_more"] = has_more
+            print(f"[ESP32 DISPATCH] Sent to ESP32: {resp}")
+            return resp
+        elif isinstance(item, str):
+            try:
+                parsed = json.loads(item)
+                if isinstance(parsed, dict):
+                    parsed["has_more"] = has_more
+                    print(f"[ESP32 DISPATCH] Sent to ESP32: {parsed}")
+                    return parsed
+            except Exception:
+                pass
+            print(f"[ESP32 DISPATCH] Sent to ESP32: {item}")
+            return {"cmd": item, "has_more": has_more}
     return {"cmd": "NONE", "has_more": False}
-
 @app.post("/api/esp32/telemetry")
 async def post_esp32_telemetry(request: Request):
     """
