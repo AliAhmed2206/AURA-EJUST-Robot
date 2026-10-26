@@ -32,7 +32,7 @@ const char* AURA_AUTH_TOKEN = "AURA-EJUST-VIP-2026-TOKEN";
 const char* SERVER_BASE_URL = "http://10.211.82.178:8080";
 
 // Fallback: Public Cloudflare Tunnel (if testing across mobile 4G / separate networks)
-const char* CLOUD_TUNNEL_URL = "https://put-properties-voltage-attacks.trycloudflare.com";
+const char* CLOUD_TUNNEL_URL = "https://over-tea-cia-remain.trycloudflare.com";
 
 // Active server endpoint
 String currentServerUrl = SERVER_BASE_URL;

@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const TUNNEL_URL = process.env.BRIDGE_URL || 'https://put-properties-voltage-attacks.trycloudflare.com';
+  const TUNNEL_URL = process.env.BRIDGE_URL || 'https://over-tea-cia-remain.trycloudflare.com';
 
   // 1. Priority: Forward to Antigravity PC Pro Session on Vertex AI (Active Google Account with Gemini 2.5 Flash & Edge-TTS)
   try {

@@ -1,1 +1,6 @@
 .vercel
+*.log
+__pycache__/
+*.mp3
+*.zip
+GOLDEN_MASTER_BACKUP_v2.0/

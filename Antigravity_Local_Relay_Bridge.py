@@ -667,7 +667,7 @@ def get_esp32_token():
     return {
         "token": ESP32_WIFI_TOKEN,
         "local_host": f"http://{LOCAL_IP}:8080",
-        "tunnel_host": "https://put-properties-voltage-attacks.trycloudflare.com",
+        "tunnel_host": "https://over-tea-cia-remain.trycloudflare.com",
         "command_endpoint": f"http://{LOCAL_IP}:8080/api/esp32/command",
         "telemetry_endpoint": f"http://{LOCAL_IP}:8080/api/esp32/telemetry",
         "send_endpoint": f"http://{LOCAL_IP}:8080/api/esp32/send",

@@ -8,7 +8,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  const TUNNEL_URL = process.env.BRIDGE_URL || 'https://put-properties-voltage-attacks.trycloudflare.com';
+  const TUNNEL_URL = process.env.BRIDGE_URL || 'https://over-tea-cia-remain.trycloudflare.com';
   const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
 
   try {
