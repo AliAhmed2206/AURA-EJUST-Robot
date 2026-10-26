@@ -838,6 +838,107 @@ function drawAngerMark(ctx, x, y, size, now) {
   ctx.restore();
 }
 
+function drawThoughtCloud(ctx, cx, eyeY, r, spacing, now) {
+  // Prominent Comic / Anime Thought Balloon emerging from the right temple
+  const pulse = 1.0 + 0.04 * Math.sin(now * 0.005);
+  
+  // 1. Small ascending thought bubbles
+  const b1x = cx + spacing * 0.40, b1y = eyeY - r * 0.62;
+  const b2x = cx + spacing * 0.58, b2y = eyeY - r * 0.84;
+  const b3x = cx + spacing * 0.74, b3y = eyeY - r * 1.05;
+
+  const drawSmallBubble = (bx, by, rad) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(bx, by, rad, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(14, 8, 28, 0.95)';
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.strokeStyle = '#00e5ff';
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  drawSmallBubble(b1x, b1y, r * 0.08);
+  drawSmallBubble(b2x, b2y, r * 0.13);
+  drawSmallBubble(b3x, b3y, r * 0.18);
+
+  // 2. Main Large Thought Balloon
+  const cloudX = cx + spacing * 0.95;
+  const cloudY = eyeY - r * 1.38;
+  const cw = r * 1.55 * pulse;
+  const ch = r * 0.95 * pulse;
+
+  ctx.save();
+  ctx.translate(cloudX, cloudY);
+
+  // Smooth composite puffy cloud
+  const lobes = [
+    { x: 0, y: 0, r: ch * 0.60 },
+    { x: -cw * 0.32, y: -ch * 0.10, r: ch * 0.44 },
+    { x: cw * 0.32, y: -ch * 0.10, r: ch * 0.44 },
+    { x: -cw * 0.22, y: ch * 0.22, r: ch * 0.38 },
+    { x: cw * 0.22, y: ch * 0.22, r: ch * 0.38 },
+    { x: 0, y: -ch * 0.35, r: ch * 0.42 },
+    { x: 0, y: ch * 0.30, r: ch * 0.36 }
+  ];
+
+  // Fill solid dark cosmic glass background first
+  ctx.shadowColor = '#b388ff';
+  ctx.shadowBlur = 24;
+  ctx.fillStyle = 'rgba(12, 6, 24, 0.96)';
+  lobes.forEach(l => {
+    ctx.beginPath();
+    ctx.arc(l.x, l.y, l.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Soft glowing cyan border on each lobe
+  ctx.strokeStyle = '#00f0ff';
+  ctx.lineWidth = 2.8;
+  ctx.shadowColor = '#00e5ff';
+  ctx.shadowBlur = 12;
+  lobes.forEach(l => {
+    ctx.beginPath();
+    ctx.arc(l.x, l.y, l.r, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+
+  // Re-fill interior center to cover overlapping internal strokes cleanly
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(12, 6, 24, 0.98)';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, cw * 0.38, ch * 0.40, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 3. Inside the Thought Cloud: Animated Dancing Waves • • • + Pulsing Glow
+  for (let i = 0; i < 3; i++) {
+    const dotX = (i - 1) * (cw * 0.24);
+    const wave = Math.sin(now * 0.007 + i * 1.2) * 7;
+    const dotY = wave;
+    const dotR = r * 0.08 + Math.sin(now * 0.008 + i) * 1.5;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
+    ctx.fillStyle = '#00f0ff';
+    ctx.shadowColor = '#00f0ff';
+    ctx.shadowBlur = 12;
+    ctx.fill();
+
+    // Specular white core
+    ctx.beginPath();
+    ctx.arc(dotX - dotR * 0.28, dotY - dotR * 0.28, dotR * 0.32, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
 function renderEmotionEffects(ctx, now, dt) {
   const r = Math.min(H * 0.21, W * 0.135);
   const spacing = Math.min(W * 0.19, r * 2.3);
@@ -972,6 +1073,11 @@ function renderEmotionEffects(ctx, now, dt) {
     ctx.shadowBlur = 8;
     ctx.fill();
     ctx.restore();
+  }
+
+  // 4. BIG THOUGHT BUBBLE (Thought Cloud Emerging from the Head)
+  if (thinking || emotion === 'THINKING' || (live.think && live.think > 0.2)) {
+    drawThoughtCloud(ctx, cx, eyeY, r, spacing, now);
   }
 }
 
@@ -2087,7 +2193,7 @@ async function speak(text, emo = 'NEUTRAL', { holdAfter = 2500, firstAudioB64 = 
   text = (text || '').trim(); if (!text) return;
   ensureAudio();
 
-  // 1. Mark speaking state and keep recognition active so user can interrupt at any instant!
+  // 1. Mark speaking state and pause mic capture during TTS output to avoid echo loops
   isSpeaking = true;
   recTaintedBySpeaker = true;
   lastInterim = '';
@@ -2095,9 +2201,9 @@ async function speak(text, emo = 'NEUTRAL', { holdAfter = 2500, firstAudioB64 = 
   spokenSoFar = '';
   updateMicBadge('speaking');
 
-  // Keep recognition running or restart it to allow instant voice barge-in
-  if (awake && !recRunning) {
-    try { startRec(); } catch (e) {}
+  if (rec && recRunning) {
+    try { rec.abort(); } catch (e) {}
+    recRunning = false;
   }
 
   const ctrl = new AbortController(); speak.ctrl = ctrl;
@@ -2588,7 +2694,28 @@ async function handleTurn(userText, context) {
     return speak(t, 'HAPPY', { holdAfter: 2500 });
   }
 
-  // Voice control for stopping / pausing physical escort
+  // Explicit Technical Sensor & Motor Query Fast-Path (Knows which signal is which)
+  if (/(sensor|sonar|ultrasonic|reading|readings|infrared|ir sensors|motors?|how do you move|حساس|حساسات|قراءات|قراءة|سونار|مواتير|محركات)/i.test(userText) &&
+      /(what|how|show|status|reading|read|which|إيه|ايه|كام|قراءة|ازاي|إزاي|وضحي)/i.test(userText)) {
+    const ar = isArabic(userText);
+    const fDist = hwState.dist ?? '--';
+    const bDist = hwState.backDist ?? '--';
+    const irRaw = String(hwState.ir || '---');
+    const L = irRaw[0] === '1' ? '1' : '0';
+    const C = irRaw[1] === '1' ? '1' : '0';
+    const R = irRaw[2] === '1' ? '1' : '0';
+    
+    let textReply = '';
+    if (ar) {
+      textReply = `السونار الأمامي قاري ${fDist} سنتيمتر قدامي، والسونار الخلفي قاري ${bDist} سنتيمتر ورايا. وحساسات التتبع التلاتة: الشمال ${L}، الوسط ${C}، واليمين ${R}. وبتحكم في الماتور الشمال واليمين حسب الخط، ولو في عائق قدامي أقل من 15 سم بقف فوراً!`;
+    } else {
+      textReply = `My front ultrasonic reads ${fDist} cm ahead, and my rear ultrasonic reads ${bDist} cm behind. My 3 IR sensors are: Left is ${L}, Center is ${C}, and Right is ${R}. I control my Left and Right motors based on these readings, and stop immediately if an obstacle is under 15 cm!`;
+    }
+    history.push({ role: 'user', text: userText }, { role: 'model', text: textReply });
+    return speak(textReply, 'CURIOUS', { holdAfter: 5500 });
+  }
+
+    // Voice control for stopping / pausing physical escort
   if (PAUSE_ESCORT_RE.test(userText)) {
     sendBle({ cmd: 'PAUSE' });
     hwState.state = 'PAUSED';
@@ -2706,7 +2833,7 @@ function updateMicBadge(state, detail = '') {
     b.textContent = '🧠 THINKING...';
   } else if (state === 'speaking') {
     b.classList.add('speaking');
-    b.textContent = '🔊 SPEAKING';
+    b.textContent = '🔊 SPEAKING (TAP TO STOP)';
   } else if (state === 'listening') {
     b.textContent = '🎙️ LISTENING';
   } else {
@@ -2770,12 +2897,11 @@ function bargeIn() {
   scheduleRestart(220);
 }
 
-function commitUserUtterance(text) {
+function commitUserUtterance(text, isBargeIn = false) {
   text = (text || '').trim();
   lastInterim = '';
   if (!text) return;
-  // Double-safety: never commit an utterance while AURA is speaking or within 500ms of speaker stop
-  if (isSpeaking || (performance.now() - lastSpeechEnd < 250)) return;
+  if (!isBargeIn && isSpeaking) return;
   if (thinking) {
     thinking = false;
     try { chatCtrl && chatCtrl.abort(); } catch (e) {}
@@ -2802,17 +2928,26 @@ function isDirectVoiceCommand(text) {
 
 let interimCommitTimer = null;
 
-function initRecognition() {
-  if (!SR) { notice('Speech recognition is not supported here. Use Chrome on Android.', 0); return; }
-  if (rec) { try { rec.abort(); } catch (e) {} }
-  rec = new SR();
-  // continuous=false is the battle-tested Android Chrome mode (prevents cumulative duplication & hung sessions)
-  rec.continuous = false;
-  rec.interimResults = true;
-  rec.maxAlternatives = 1;
-  rec.lang = cfg.lang;
+function createFreshRecognition() {
+  if (!SR) { notice('Speech recognition is not supported in this browser.', 0); return null; }
+  if (rec) {
+    try {
+      rec.onstart = null;
+      rec.onresult = null;
+      rec.onerror = null;
+      rec.onend = null;
+      rec.abort();
+    } catch (e) {}
+    rec = null;
+  }
 
-    rec.onstart = () => {
+  const r = new SR();
+  r.continuous = false;
+  r.interimResults = true;
+  r.maxAlternatives = 1;
+  r.lang = cfg.lang;
+
+  r.onstart = () => {
     recRunning = true;
     lastInterim = '';
     clearTimeout(interimCommitTimer);
@@ -2820,125 +2955,112 @@ function initRecognition() {
     if (!isSpeaking) updateMicBadge('listening');
   };
 
-  rec.onresult = (ev) => {
+  r.onresult = (ev) => {
     let interim = '', final = '';
     for (let i = ev.resultIndex; i < ev.results.length; ++i) {
-      if (ev.results[i].isFinal) {
-        final += ev.results[i][0].transcript;
-      } else {
-        interim += ev.results[i][0].transcript;
-      }
+      if (ev.results[i].isFinal) final += ev.results[i][0].transcript;
+      else interim += ev.results[i][0].transcript;
     }
     const rawHeard = (final || interim).trim();
     if (!rawHeard) return;
 
-    // IMMEDIATE BARGE-IN INTERRUPTION: If AURA is currently speaking
+    // IMMEDIATE BARGE-IN INTERRUPTION: If speaking, user voice cuts off speech
     if (isSpeaking) {
       if (!isSelfEcho(rawHeard, currentReply)) {
-        log('[BARGE-IN] Interrupted by user voice:', rawHeard);
+        log('[BARGE-IN] User interrupted:', rawHeard);
         bargeIn();
-        if (isDirectVoiceCommand(rawHeard) || rawHeard.length >= 3) {
+        if (isDirectVoiceCommand(rawHeard) || rawHeard.length >= 2) {
           caption(rawHeard, true);
-          commitUserUtterance(rawHeard);
+          commitUserUtterance(rawHeard, true);
         }
         return;
-      } else {
-        // Ignored self-echo of speaker output
-        return;
       }
+      return;
     }
 
     if (emotion !== 'THINKING') {
       setEmotion('LISTENING', 4000);
     }
 
-    // --- TIER 1: INSTANT COMMAND FAST-PATH (Zero Lag) ---
-    // If a motion or stop command is detected in interim speech, execute IMMEDIATELY without waiting for silence!
+    // Live transcript feedback
+    caption(rawHeard + (final ? '' : ' …'), true);
+    updateMicBadge('hearing', rawHeard.slice(0, 24));
+
+    // Direct motion / emergency stop commands fast-path
     if (isDirectVoiceCommand(rawHeard)) {
       clearTimeout(interimCommitTimer);
       lastInterim = '';
-      try { rec.abort(); } catch (e) {}
-      caption(rawHeard, true);
       commitUserUtterance(rawHeard);
       return;
     }
 
-    // --- TIER 2: FINAL RESULT COMMIT ---
+    // Final result from browser STT
     if (final.trim()) {
       clearTimeout(interimCommitTimer);
-      const cleanFinal = final.trim();
       lastInterim = '';
-      caption(cleanFinal, true);
-      commitUserUtterance(cleanFinal);
+      commitUserUtterance(final.trim());
       return;
     }
 
-    // --- TIER 3: ADAPTIVE NOISE INTERIM COMMITTER ---
-    // In noisy halls, Google's cloud STT hangs for 4-8 seconds waiting for silence.
-    // If interim speech remains unchanged for 650ms, the user has finished speaking!
+    // Adaptive noise committer: 900ms stable silence commits the sentence
     lastInterim = interim.trim();
-    caption(lastInterim + ' …', true);
-    updateMicBadge('hearing', lastInterim.slice(0, 22));
-
     clearTimeout(interimCommitTimer);
-    if (lastInterim && lastInterim.length >= 3) {
+    if (lastInterim && lastInterim.length >= 2) {
       interimCommitTimer = setTimeout(() => {
-        if (!isSpeaking && (performance.now() - lastSpeechEnd >= 220) && lastInterim && lastInterim.trim().length >= 2) {
-          log('[NOISE-ADAPTIVE] Fast-committing stable speech in noisy hall:', lastInterim);
+        if (!isSpeaking && lastInterim && lastInterim.trim().length >= 2) {
           const toSend = lastInterim.trim();
           lastInterim = '';
-          try { rec.abort(); } catch (e) {}
-          caption(toSend, true);
           commitUserUtterance(toSend);
         }
-      }, 650);
+      }, 900);
     }
   };
 
-    rec.onerror = (e) => {
+  r.onerror = (e) => {
     recRunning = false;
     lastInterim = '';
     clearTimeout(interimCommitTimer);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      notice('Microphone blocked. Tap the mic button above to allow access.', 0);
+      notice('Microphone blocked. Tap mic badge to allow.', 4000);
       updateMicBadge('blocked');
-      awake = false;
-      setEmotion('SAD');
     } else {
       if (e.error !== 'no-speech' && e.error !== 'aborted') log('rec notice:', e.error);
       if (!isSpeaking) updateMicBadge('listening');
-      scheduleRestart(100);
+      scheduleRestart(250);
     }
   };
 
-  rec.onend = () => {
+  r.onend = () => {
     recRunning = false;
     clearTimeout(interimCommitTimer);
-    // Only commit leftover interim speech if the session was 100% untainted by AURA's speaker
-    if (!isSpeaking && (performance.now() - lastSpeechEnd >= 220) && lastInterim && lastInterim.trim().length >= 2) {
+    if (!isSpeaking && lastInterim && lastInterim.trim().length >= 2) {
       const toSend = lastInterim.trim();
       lastInterim = '';
-      caption(toSend, true);
       commitUserUtterance(toSend);
     }
     lastInterim = '';
-    if (awake) scheduleRestart(80);
+    if (awake && !isSpeaking) scheduleRestart(150);
   };
+
+  rec = r;
+  return r;
+}
+
+function initRecognition() {
+  createFreshRecognition();
 }
 
 function startRec() {
-  if (recRunning || !awake) return;
-  if (!rec) initRecognition();
-  if (!rec) return;
+  if (recRunning || !awake || isSpeaking) return;
   try {
-    rec.lang = cfg.lang;
+    createFreshRecognition();
+    if (!rec) return;
     rec.start();
     recRunning = true;
+    updateMicBadge('listening');
   } catch (e) {
     recRunning = false;
-    if (e.name !== 'InvalidStateError') {
-      scheduleRestart(220);
-    }
+    scheduleRestart(350);
   }
 }
 
@@ -3265,8 +3387,44 @@ function getHardwareContextString() {
   const parts = [];
   if (hwState.connected || hwState.wifiConnected) {
     const connType = hwState.connected ? 'BLE' : `Wi-Fi (${hwState.wifiIp || 'LAN'})`;
-    const irFormatted = (hwState.ir || '---').split('').join(' ');
-    parts.push(`ESP32 Robot Body: CONNECTED via ${connType} (State: ${hwState.state}, Front Ultrasonic: ${hwState.dist ?? '--'}cm, Rear Ultrasonic: ${hwState.backDist ?? '--'}cm, 3-Channel IR Line Sensors [L C R]: [${irFormatted}], Checkpoints: ${hwState.markers})`);
+    const irRaw = String(hwState.ir || '---');
+    const irL = irRaw[0] === '1' ? '1 (DETECTING LINE / ON_LINE)' : '0 (OFF LINE / CLEAR)';
+    const irC = irRaw[1] === '1' ? '1 (CENTERED ON LINE / ON_LINE)' : '0 (OFF LINE / CLEAR)';
+    const irR = irRaw[2] === '1' ? '1 (DETECTING LINE / ON_LINE)' : '0 (OFF LINE / CLEAR)';
+
+    const fDist = hwState.dist;
+    const bDist = hwState.backDist;
+    const frontStatus = (fDist !== null && fDist < 15) ? `OBSTACLE AHEAD! (${fDist} cm < 15cm safety threshold, MOTORS STOPPED)` : `${fDist ?? '--'} cm (PATH CLEAR)`;
+    const rearStatus = (bDist !== null && bDist > 15) ? `${bDist} cm (REAR CLEAR FOR REVERSING)` : `${bDist ?? '--'} cm (OBSTACLE BEHIND)`;
+
+    // Detailed Motor Direction & Speed Mapping (L293D)
+    let motorAction = 'STOPPED (Left: 0, Right: 0)';
+    if (fDist !== null && fDist < 15) {
+      motorAction = 'EMERGENCY STOP (Left: 0, Right: 0) — Obstacle Ahead';
+    } else if (irRaw[0] === '0' && irRaw[1] === '1' && irRaw[2] === '0') {
+      motorAction = 'FORWARD (Left Motor: +170, Right Motor: +170) — Line Centered';
+    } else if (irRaw[0] === '1' && irRaw[2] === '0') {
+      motorAction = 'TURN LEFT (Left Motor: +85, Right Motor: +200) — Line Left';
+    } else if (irRaw[2] === '1' && irRaw[0] === '0') {
+      motorAction = 'TURN RIGHT (Left Motor: +200, Right Motor: +85) — Line Right';
+    } else if (irRaw === '111') {
+      motorAction = 'STOP AT INTERSECTION / GOAL (Left: 0, Right: 0)';
+    } else if (irRaw === '000') {
+      motorAction = (bDist > 15) ? 'REVERSE SEARCHING LINE (Left: -170, Right: -170)' : 'STOPPED — Line Lost & Rear Blocked';
+    }
+
+    parts.push(`EXACT ROBOT HARDWARE & SENSOR MAPPING:
+- Connection: ${connType} | Robot State: ${hwState.state}
+- Front Ultrasonic Sonar (pins Trig:19, Echo:35): ${frontStatus}
+- Rear Ultrasonic Sonar (pins Trig:18, Echo:34): ${rearStatus}
+- 3-Channel IR Line Tracker:
+  * Left IR Sensor (pin 32): ${irL}
+  * Center IR Sensor (pin 23): ${irC}
+  * Right IR Sensor (pin 22): ${irR}
+- L293D Dual DC Motors:
+  * Left Motor (pins IN1:14, IN2:27, PWM EN:25)
+  * Right Motor (pins IN1:26, IN2:33, PWM EN:13)
+  * Autonomous Driving Rule: ${motorAction}`);
   }
   if (hwState.lastNfcUid !== 'NONE' && (Date.now() - hwState.lastNfcTime < 180000)) {
     if (hwState.lastNfcValid) {
