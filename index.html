@@ -2849,8 +2849,13 @@ const SYSTEM_PROMPT = `You are AURA, the friendly welcome robot of the IEEE RAS 
 
 function parseReply(raw) {
   const em = (raw.match(/\[EMOTION:\s*([A-Z_]+)\]/i) || [])[1];
-  const actMatch = raw.match(/\[ACTION:\s*([A-Z0-9_:]+)\]/i);
-  let act = actMatch ? actMatch[1].trim() : null;
+  const allActions = [];
+  const actionRegex = /\[ACTION:\s*([A-Z0-9_:]+)\]/gi;
+  let m;
+  while ((m = actionRegex.exec(raw)) !== null) {
+    allActions.push(m[1].trim());
+  }
+  let act = allActions[0] || null;
   let durationMs = null;
   if (act && act.includes(':')) {
     const parts = act.split(':');
@@ -2862,7 +2867,8 @@ function parseReply(raw) {
     text, 
     emotion: (em || 'NEUTRAL').toUpperCase(), 
     action: act ? act.toUpperCase() : null,
-    durationMs 
+    durationMs,
+    allActions
   };
 }
 
@@ -2886,30 +2892,53 @@ function captureCameraFrameB64() {
 
 
 // ======================================================================================
-// DYNAMIC MOVEMENT & DURATION INTENT PARSER (Seconds, Minutes & Single Wheels)
+// COMPLEX & CHAINED MULTI-STEP MOVEMENT PARSER & SEQUENCER
 // ======================================================================================
-function parseMovementIntent(rawText) {
+let activeSequenceToken = 0;
+
+async function executeChainedSequence(steps) {
+  const currentToken = ++activeSequenceToken;
+  for (let i = 0; i < steps.length; i++) {
+    if (activeSequenceToken !== currentToken) {
+      log('Sequence superseded or interrupted, aborting remainder.');
+      break;
+    }
+    const step = steps[i];
+    log(`[SEQUENCE STEP ${i + 1}/${steps.length}]`, step.cmd, `${step.ms} ms`);
+    sendBle({ cmd: step.cmd, ms: step.ms });
+    hwState.state = step.cmd === 'STOP' ? 'PAUSED' : 'DRIVING';
+    updateHwUi();
+    
+    // Wait for step duration + 200ms inter-step settling pause
+    const waitMs = (step.ms || 1200) + 200;
+    await new Promise(r => setTimeout(r, waitMs));
+  }
+  if (activeSequenceToken === currentToken) {
+    hwState.state = 'IDLE';
+    updateHwUi();
+    log('[SEQUENCE COMPLETE]');
+  }
+}
+
+function parseSingleMovement(rawText) {
   if (!rawText) return null;
   const t = rawText.toLowerCase().trim();
   const ar = isArabic(rawText);
 
-  // 1. Extract Duration in Milliseconds or Degrees
   let ms = null;
   let deg = null;
 
-  // Degrees: e.g. "360 deg", "360 degrees", "90 deg", "180 degree", "360 درجة"
+  // Degrees
   const degMatch = t.match(/(\d+)\s*(deg|degs|degree|degrees|درجة|درجه)/i);
   if (degMatch) {
     deg = parseInt(degMatch[1], 10);
-    ms = Math.round(deg * 12.2); // ~12.2ms per degree at TURN_SPEED (360° = ~4400ms, 180° = ~2200ms, 90° = ~1100ms)
+    ms = Math.round(deg * 12.2);
   }
 
-  // Numerical seconds: e.g. "5 seconds", "5s", "5 sec", "10 seconds", "5 ثواني", "٥ ثواني"
+  // Seconds
   if (ms === null) {
     const secMatch = t.match(/(\d+)\s*(s|sec|secs|second|seconds|ثانية|ثواني|ثوان)/i);
-    if (secMatch) {
-      ms = parseInt(secMatch[1], 10) * 1000;
-    }
+    if (secMatch) ms = parseInt(secMatch[1], 10) * 1000;
   }
 
   // Word seconds
@@ -2927,177 +2956,173 @@ function parseMovementIntent(rawText) {
     }
   }
 
-  // Minutes: e.g. "a minute", "1 minute", "for a minute", "دقيقة", "نص دقيقة"
-  if (t.includes('half a minute') || t.includes('نص دقيقة') || t.includes('نصف دقيقة')) {
-    ms = 30000;
-  } else if (t.includes('minute') || t.includes('دقيقة') || t.includes('دقايق') || t.includes('دقائق')) {
+  // Minutes
+  if (ms === null && (t.includes('minute') || t.includes('دقيقة') || t.includes('دقايق'))) {
     const minMatch = t.match(/(\d+)\s*(m|min|mins|minute|minutes|دقيقة|دقايق)/i);
-    if (minMatch) {
-      ms = parseInt(minMatch[1], 10) * 60000;
-    } else {
-      ms = 60000; // default "a minute" -> 60s
-    }
+    ms = minMatch ? parseInt(minMatch[1], 10) * 60000 : 60000;
   }
 
-  // Safety clamp: min 300ms, max 120,000ms (2 minutes)
-  if (ms !== null) {
-    ms = Math.min(120000, Math.max(300, ms));
-  }
+  if (ms !== null) ms = Math.min(120000, Math.max(300, ms));
 
-  // Helper formatting for speech
   const durSec = ms ? Math.round(ms / 1000) : null;
-  const durStrEn = durSec ? (durSec >= 60 ? `for ${Math.round(durSec/60)} minute${durSec>=120?'s':''}` : `for ${durSec} seconds`) : '';
-  const durStrAr = durSec ? (durSec >= 60 ? `لمدة ${Math.round(durSec/60)} دقيقة` : `لمدة ${durSec} ثواني`) : '';
+  const durStrEn = deg ? `${deg} degrees` : (durSec ? (durSec >= 60 ? `for ${Math.round(durSec/60)} min` : `for ${durSec} seconds`) : '');
+  const durStrAr = deg ? `${deg} درجة` : (durSec ? (durSec >= 60 ? `لمدة ${Math.round(durSec/60)} دقيقة` : `لمدة ${durSec} ثواني`) : '');
 
-  // 2. Identify Direction & Wheel Action:
-
-  // A. Right Wheel Only / Right Motor
+  // 1. Right Wheel Only
   if (/(right wheel|right motor|right track|wheel.*right|motor.*right|العجلة اليمين|الماتور اليمين|المحرك اليمين|عجلة يمين|ماتور يمين)/i.test(t)) {
-    const targetMs = ms || 5000;
-    return {
-      cmd: 'TURN_RIGHT', // Powers right wheel/steer
-      action: 'RIGHT_WHEEL',
-      ms: targetMs,
-      speechEn: `Turning on the right wheel ${durStrEn || 'for 5 seconds'}!`,
-      speechAr: `حاضر، هشغل العجلة اليمين ${durStrAr || 'لمدة 5 ثواني'}!`
-    };
+    return { cmd: 'TURN_RIGHT', action: 'RIGHT_WHEEL', ms: ms || 5000, descEn: `turning on the right wheel ${durStrEn || 'for 5s'}`.trim(), descAr: `تشغيل العجلة اليمين ${durStrAr || '5 ثواني'}`.trim() };
   }
 
-  // B. Left Wheel Only / Left Motor
+  // 2. Left Wheel Only
   if (/(left wheel|left motor|left track|wheel.*left|motor.*left|العجلة الشمال|الماتور الشمال|المحرك الشمال|عجلة شمال|ماتور شمال)/i.test(t)) {
-    const targetMs = ms || 5000;
-    return {
-      cmd: 'TURN_LEFT', // Powers left wheel/steer
-      action: 'LEFT_WHEEL',
-      ms: targetMs,
-      speechEn: `Turning on the left wheel ${durStrEn || 'for 5 seconds'}!`,
-      speechAr: `حاضر، هشغل العجلة الشمال ${durStrAr || 'لمدة 5 ثواني'}!`
-    };
+    return { cmd: 'TURN_LEFT', action: 'LEFT_WHEEL', ms: ms || 5000, descEn: `turning on the left wheel ${durStrEn || 'for 5s'}`.trim(), descAr: `تشغيل العجلة الشمال ${durStrAr || '5 ثواني'}`.trim() };
   }
 
-  // C. Turn Right
-  if (/(turn right|spin right|steer right|rotate right|rotate to the right|حود يمين|لف يمين|دور يمين|يمين)/i.test(t)) {
-    const targetMs = ms || 1200;
-    return {
-      cmd: 'TURN_RIGHT',
-      action: 'TURN_RIGHT',
-      ms: targetMs,
-      speechEn: `Turning right ${durStrEn}!`,
-      speechAr: `حاضر، بحود يمين ${durStrAr}!`
-    };
-  }
-
-  // D. Turn Left
-  if (/(turn left|spin left|steer left|rotate left|rotate to the left|حود شمال|لف شمال|دور شمال|شمال)/i.test(t)) {
-    const targetMs = ms || 1200;
-    return {
-      cmd: 'TURN_LEFT',
-      action: 'TURN_LEFT',
-      ms: targetMs,
-      speechEn: `Turning left ${durStrEn}!`,
-      speechAr: `حاضر، بحود شمال ${durStrAr}!`
-    };
-  }
-
-  // Spin 360 / Full Circle Spin / Rotation by Degrees (e.g. "spin 360 deg", "spin 360 degrees", "rotate 90 deg")
+  // 3. Spin 360 / Full Circle
   const isLeft = /(left|counter[- ]?clockwise|عكس عقارب الساعة|شمال|يسار)/i.test(t);
   const spinCmd = isLeft ? 'TURN_LEFT' : 'TURN_RIGHT';
 
   if (/(spin.*360|360.*spin|rotate.*360|360.*rotate|turn.*360|360.*deg|360.*degree|full circle|لف.*360|دورة كاملة|لفة كاملة)/i.test(t)) {
-    const targetMs = ms || 4400;
-    return {
-      cmd: spinCmd,
-      action: 'SPIN_360',
-      ms: targetMs,
-      speechEn: `Okay, spinning 360 degrees for you!`,
-      speechAr: `حاضر، بلف 360 درجة دورة كاملة!`
-    };
+    return { cmd: spinCmd, action: 'SPIN_360', ms: ms || 4400, descEn: `spinning 360 degrees`, descAr: `لف 360 درجة دورة كاملة` };
   }
 
-  // Generic Spin or Specified Degrees (e.g. "rotate 90 degrees", "do a spin", "spin in place", "spin around", "spin")
+  // 4. Generic Spin / Degrees
   if (deg !== null || /(spin around|spin in place|do a spin|spin|لف لفة|لف حوالين نفسك)/i.test(t)) {
-    const targetMs = ms || 4400;
-    return {
-      cmd: spinCmd,
-      action: 'SPIN',
-      ms: targetMs,
-      speechEn: deg ? `Okay, spinning ${deg} degrees for you!` : `Okay, spinning around for you!`,
-      speechAr: deg ? `حاضر، هلف ${deg} درجة!` : `حاضر، بلف حوالين نفسي!`
-    };
+    return { cmd: spinCmd, action: 'SPIN', ms: ms || 4400, descEn: deg ? `spinning ${deg} degrees` : `spinning around`, descAr: deg ? `لف ${deg} درجة` : `لف حوالين نفسي` };
   }
 
-  // E. Turn Around (180)
-  if (/(turn around|rotate 180|لف ورا|دور ورا|180)/i.test(t)) {
-    const targetMs = ms || 2200;
-    return {
-      cmd: spinCmd,
-      action: 'TURN_AROUND',
-      ms: targetMs,
-      speechEn: `Turning around ${durStrEn}!`,
-      speechAr: `بلف ورايا حالا ${durStrAr}!`
-    };
+  // 5. Turn Right (supports "turn right" and standalone "right")
+  if (/(turn right|spin right|steer right|rotate right|rotate to the right|حود يمين|لف يمين|دور يمين|\bright\b|يمين)/i.test(t)) {
+    return { cmd: 'TURN_RIGHT', action: 'TURN_RIGHT', ms: ms || 1200, descEn: `turning right ${durStrEn}`.trim(), descAr: `حود يمين ${durStrAr}`.trim() };
   }
 
-  // F. Move Forward
-  if (/(move forward|go forward|drive forward|step forward|forward|ahead|straight|تحرك قدام|امشي قدام|اتحرك لقدام|اطلع قدام|قدام)/i.test(t)) {
-    const targetMs = ms || 2000;
-    return {
-      cmd: 'MOVE_FWD',
-      action: 'MOVE_FWD',
-      ms: targetMs,
-      speechEn: `Moving forward ${durStrEn}!`,
-      speechAr: `حاضر، بتحرك لقدام ${durStrAr}!`
-    };
+  // 6. Turn Left (supports "turn left" and standalone "left")
+  if (/(turn left|spin left|steer left|rotate left|rotate to the left|حود شمال|لف شمال|دور شمال|\bleft\b|شمال)/i.test(t)) {
+    return { cmd: 'TURN_LEFT', action: 'TURN_LEFT', ms: ms || 1200, descEn: `turning left ${durStrEn}`.trim(), descAr: `حود شمال ${durStrAr}`.trim() };
   }
 
-  // G. Move Backward / Reverse
-  if (/(move backward|back up|go back|reverse|backward|ارجع ورا|ارجعي ورا|اتحرك ورا|لورا|ورا)/i.test(t)) {
-    const targetMs = ms || 2000;
-    return {
-      cmd: 'MOVE_REV',
-      action: 'MOVE_REV',
-      ms: targetMs,
-      speechEn: `Backing up ${durStrEn}!`,
-      speechAr: `حاضر، برجع لورا ${durStrAr}!`
-    };
+  // 7. Turn Around (180)
+  if (/(turn around|rotate 180|180|لف ورا|دور ورا)/i.test(t)) {
+    return { cmd: spinCmd, action: 'TURN_AROUND', ms: ms || 2200, descEn: `turning around ${durStrEn}`.trim(), descAr: `لف ورا ${durStrAr}`.trim() };
   }
 
-  // H. Hard Stop
+  // 8. Move Forward
+  if (/(move forward|go forward|drive forward|step forward|forward|ahead|straight|move|drive|\bfwd\b|تحرك قدام|امشي قدام|اتحرك لقدام|اطلع قدام|قدام|تحرك|امشي)/i.test(t)) {
+    return { cmd: 'MOVE_FWD', action: 'MOVE_FWD', ms: ms || 2000, descEn: `moving forward ${durStrEn}`.trim(), descAr: `تحرك لقدام ${durStrAr}`.trim() };
+  }
+
+  // 9. Move Backward / Reverse
+  if (/(move backward|back up|go back|reverse|backward|\bback\b|ارجع ورا|ارجعي ورا|اتحرك ورا|لورا|ورا)/i.test(t)) {
+    return { cmd: 'MOVE_REV', action: 'MOVE_REV', ms: ms || 2000, descEn: `backing up ${durStrEn}`.trim(), descAr: `رجوع لورا ${durStrAr}`.trim() };
+  }
+
+  // 10. Stop
   if (/(stop|halt|freeze|brake|قف|اقف|وقفي|فرمل|ستوب)/i.test(t)) {
-    return {
-      cmd: 'STOP',
-      action: 'STOP',
-      ms: 0,
-      speechEn: 'Stopping all motors immediately!',
-      speechAr: 'وقفت كل المواتير حالا!'
-    };
+    return { cmd: 'STOP', action: 'STOP', ms: 0, descEn: 'stopping', descAr: 'وقوف' };
   }
 
-  // I. Friendly Wave Gesture
-  if (/(wave|hi|hello|حيي|سلم|لوح|باي)/i.test(t) && /(wave|gesture|motion|لوح|سلم|حيي)/i.test(t)) {
-    return {
-      cmd: 'WAVE',
-      action: 'WAVE',
-      ms: 500,
-      speechEn: 'Waving at you! Hello there!',
-      speechAr: 'أهلاً بيك! بسلم عليك بإيدي!'
-    };
+  // 11. Friendly Wave
+  if (/(wave|سلم|لوح|حيي)/i.test(t)) {
+    return { cmd: 'WAVE', action: 'WAVE', ms: 500, descEn: 'waving', descAr: 'سلام بالإيد' };
   }
 
-  // J. Duration Update / Test (e.g. "make it a minute to test", "try 5 seconds", "خليها دقيقة", "جرب 10 ثواني")
-  if (ms !== null) {
+  // 12. Fallback pure duration update (e.g. "make it a minute to test")
+  if (ms !== null && /(make it|try|test|let's do|جرب|خليها|اعملها)/i.test(t)) {
     const fallback = (typeof lastMovementCmd !== 'undefined' && lastMovementCmd) ? lastMovementCmd : 'MOVE_FWD';
     const isTurn = fallback.includes('TURN') || fallback.includes('RIGHT') || fallback.includes('LEFT');
     return {
       cmd: fallback,
       action: fallback,
       ms: ms,
-      speechEn: isTurn ? `Turning ${durStrEn}!` : `Moving forward ${durStrEn}!`,
-      speechAr: isTurn ? `حاضر، هلف ${durStrAr}!` : `حاضر، هتحرك لقدام ${durStrAr}!`
+      descEn: isTurn ? `turning ${durStrEn}` : `moving forward ${durStrEn}`,
+      descAr: isTurn ? `لف ${durStrAr}` : `تحرك لقدام ${durStrAr}`
     };
   }
 
   return null;
+}
+
+function parseChainedMovement(rawText) {
+  if (!rawText) return null;
+  const t = rawText.toLowerCase().trim();
+  const ar = isArabic(rawText);
+
+  // Preset: Dance Party Routine
+  if (/(dance|do a dance|party mode|رقصة|ارقصي|يلا نرقص)/i.test(t)) {
+    return {
+      isSequence: true,
+      steps: [
+        { cmd: 'TURN_LEFT', ms: 600 },
+        { cmd: 'TURN_RIGHT', ms: 1200 },
+        { cmd: 'TURN_LEFT', ms: 600 },
+        { cmd: 'WAVE', ms: 500 },
+        { cmd: 'TURN_RIGHT', ms: 2200 }
+      ],
+      speechEn: "Let's dance! Watch my moves!",
+      speechAr: "يلا نرقص سوا! شوفي حركاتي!"
+    };
+  }
+
+  // Split multi-step commands by sequence delimiters:
+  // e.g. "then", "and then", "after that", ",", "وبعدين", "ثم", "وبعد كدة", "وبعدها"
+  const splitRegex = /\s*(?:,\s*then\s*|\s+then\s+|\s+and\s+then\s+|\s+after\s+that\s+|,\s*|\s+وبعدين\s+|\s+و\s*بعدين\s+|\s+ثم\s+|\s+وبعد\s*كد[ةه]\s+|\s+وبعدها\s+)\s*/i;
+  const parts = t.split(splitRegex).map(p => p.trim()).filter(Boolean);
+
+  let effectiveParts = parts;
+  if (parts.length === 1 && /\b(and|و)\b/i.test(parts[0])) {
+    const andMatch = parts[0].split(/\s+(?:and|و)\s+/i);
+    if (andMatch.length > 1) {
+      effectiveParts = andMatch;
+    }
+  }
+
+  if (effectiveParts.length <= 1) {
+    const single = parseSingleMovement(rawText);
+    if (!single) return null;
+    return {
+      isSequence: false,
+      cmd: single.cmd,
+      action: single.action,
+      ms: single.ms,
+      speechEn: `Okay, ${single.descEn}!`,
+      speechAr: `حاضر، ${single.descAr}!`
+    };
+  }
+
+  const steps = [];
+  const descsEn = [];
+  const descsAr = [];
+
+  for (const part of effectiveParts) {
+    const parsed = parseSingleMovement(part);
+    if (parsed) {
+      steps.push({ cmd: parsed.cmd, ms: parsed.ms });
+      descsEn.push(parsed.descEn);
+      descsAr.push(parsed.descAr);
+    }
+  }
+
+  if (steps.length === 0) return null;
+  if (steps.length === 1) {
+    return {
+      isSequence: false,
+      cmd: steps[0].cmd,
+      action: steps[0].cmd,
+      ms: steps[0].ms,
+      speechEn: `Okay, ${descsEn[0]}!`,
+      speechAr: `حاضر، ${descsAr[0]}!`
+    };
+  }
+
+  const speechEn = `Okay, ${descsEn.join(', then ')}!`;
+  const speechAr = `حاضر، ${descsAr.join(' وبعدين ')}!`;
+
+  return {
+    isSequence: true,
+    steps,
+    speechEn,
+    speechAr
+  };
 }
 
 let lastMovementCmd = 'MOVE_FWD';
@@ -3595,8 +3620,9 @@ async function handleTurn(userText, context) {
     return speak(t, 'HAPPY', { holdAfter: 3500 });
   }
 
-  // --- Directional Voice Driving (Manual Pulses) ---
+  // --- Directional Voice Driving (Manual Pulses & Chained Complex Tasks) ---
   if (HARD_STOP_RE.test(userText)) {
+    activeSequenceToken++; // cancels any pending sequence steps immediately
     sendBle({ cmd: 'STOP' });
     hwState.state = 'PAUSED';
     updateHwUi();
@@ -3605,17 +3631,22 @@ async function handleTurn(userText, context) {
     history.push({ role: 'user', text: userText }, { role: 'model', text: t });
     return speak(t, 'SURPRISED', { holdAfter: 2000 });
   }
-  // Dynamic Voice Movement & Single-Wheel Controller with Variable Durations (5s, 10s, 1min)
-  const moveIntent = parseMovementIntent(userText);
-  if (moveIntent) {
-    lastMovementCmd = moveIntent.cmd;
-    sendBle({ cmd: moveIntent.cmd, ms: moveIntent.ms });
-    hwState.state = moveIntent.cmd === 'STOP' ? 'PAUSED' : 'DRIVING';
-    updateHwUi();
+  // Dynamic Voice Movement, Sequences & Single-Wheel Controller
+  const chainIntent = parseChainedMovement(userText);
+  if (chainIntent) {
     const ar = isArabic(userText);
-    const speechReply = ar ? moveIntent.speechAr : moveIntent.speechEn;
+    const speechReply = ar ? chainIntent.speechAr : chainIntent.speechEn;
     history.push({ role: 'user', text: userText }, { role: 'model', text: speechReply });
-    return speak(speechReply, 'HAPPY', { holdAfter: Math.min(3500, moveIntent.ms) });
+    if (chainIntent.isSequence) {
+      executeChainedSequence(chainIntent.steps);
+      return speak(speechReply, 'HAPPY', { holdAfter: 3500 });
+    } else {
+      lastMovementCmd = chainIntent.cmd;
+      sendBle({ cmd: chainIntent.cmd, ms: chainIntent.ms });
+      hwState.state = chainIntent.cmd === 'STOP' ? 'PAUSED' : 'DRIVING';
+      updateHwUi();
+      return speak(speechReply, 'HAPPY', { holdAfter: Math.min(3500, chainIntent.ms) });
+    }
   }
 
   // Hall escort — instant, no waiting for the AI
@@ -3639,14 +3670,34 @@ async function handleTurn(userText, context) {
     thinking = false;
     if (!r || !r.text) throw new Error('empty reply');
     history.push({ role: 'model', text: r.text });
-    let requestedMs = r.durationMs;
-    if (!requestedMs) {
-      const secM = userText.match(/(\d+)\s*(s|sec|secs|second|seconds|ثانية|ثواني)/i);
-      const minM = userText.match(/(\d+)?\s*(minute|minutes|دقيقة|دقايق)/i);
-      if (secM) requestedMs = parseInt(secM[1], 10) * 1000;
-      else if (minM) requestedMs = (parseInt(minM[1], 10) || 1) * 60000;
+    if (r.allActions && r.allActions.length > 1) {
+      const steps = r.allActions.map(actStr => {
+        let a = actStr.toUpperCase().trim();
+        let ms = 1200;
+        if (a.includes(':')) {
+          const p = a.split(':');
+          a = p[0].trim();
+          ms = parseInt(p[1], 10) || 1200;
+        }
+        let cmd = 'MOVE_FWD';
+        if (a === 'LEFT' || a === 'TURN_LEFT') cmd = 'TURN_LEFT';
+        else if (a === 'RIGHT' || a === 'TURN_RIGHT') cmd = 'TURN_RIGHT';
+        else if (a === 'BACKWARD' || a === 'BACK' || a === 'MOVE_REV') cmd = 'MOVE_REV';
+        else if (a === 'WAVE') cmd = 'WAVE';
+        else if (a === 'STOP') cmd = 'STOP';
+        return { cmd, ms };
+      });
+      executeChainedSequence(steps);
+    } else {
+      let requestedMs = r.durationMs;
+      if (!requestedMs) {
+        const secM = userText.match(/(\d+)\s*(s|sec|secs|second|seconds|ثانية|ثواني)/i);
+        const minM = userText.match(/(\d+)?\s*(minute|minutes|دقيقة|دقايق)/i);
+        if (secM) requestedMs = parseInt(secM[1], 10) * 1000;
+        else if (minM) requestedMs = (parseInt(minM[1], 10) || 1) * 60000;
+      }
+      dispatchRobotAction(r.action, requestedMs);
     }
-    dispatchRobotAction(r.action, requestedMs);
     log('reply:', r.emotion, r.text);
     await speak(r.text, r.emotion, { firstAudioB64: r.firstAudioB64, clauses: r.clauses });
   } catch (e) {
