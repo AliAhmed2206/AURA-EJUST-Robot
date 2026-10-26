@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const TUNNEL_URL = process.env.BRIDGE_URL || 'https://over-tea-cia-remain.trycloudflare.com';
+  const TUNNEL_URL = process.env.BRIDGE_URL || 'https://independence-freebsd-expanding-defend.trycloudflare.com';
 
   // 1. Priority: Forward to Antigravity PC Pro Session on Vertex AI (Active Google Account with Gemini 2.5 Flash & Edge-TTS)
   try {
@@ -54,45 +54,43 @@ export default async function handler(req, res) {
       });
     }
 
-    const parts = [];
+    const currentParts = [];
+    if (context) currentParts.push({ text: `[Hardware Context: ${context}]\n` });
     if (image_b64) {
-      const cleanB64 = image_b64.replace(/^data:image\/\w+;base64,/, '');
-      parts.push({ inlineData: { mimeType: 'image/jpeg', data: cleanB64 } });
+      currentParts.push({
+        inline_data: {
+          mime_type: 'image/jpeg',
+          data: image_b64
+        }
+      });
     }
-    const fullText = context ? `(${context})\n${prompt}` : prompt;
-    parts.push({ text: fullText });
-    contents.push({ role: 'user', parts });
+    currentParts.push({ text: prompt });
+    contents.push({ role: 'user', parts: currentParts });
 
-    const model = clientModel || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+    const modelName = clientModel || 'gemini-2.5-flash';
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+    const apiRes = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents,
+        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 200
+          maxOutputTokens: 256
         }
       })
     });
 
-    if (!geminiRes.ok) {
-      const err = await geminiRes.text();
-      return res.status(geminiRes.status).json({ error: `Gemini API returned ${geminiRes.status}: ${err}` });
+    if (!apiRes.ok) {
+      const errText = await apiRes.text();
+      return res.status(apiRes.status).json({ error: `Gemini API error: ${errText}` });
     }
 
-    const data = await geminiRes.json();
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const em = (raw.match(/\[EMOTION:\s*([A-Z_]+)\]/i) || [])[1] || 'HAPPY';
-    const act = (raw.match(/\[ACTION:\s*([A-Z_]+)\]/i) || [])[1] || null;
-    const cleanText = raw.replace(/\[(EMOTION|ACTION):[^\]]*\]/gi, '').replace(/[*_#`]+/g, '').trim();
-
-    return res.status(200).json({
-      reply: cleanText,
-      emotion: em,
-      action: act
-    });
+    const apiData = await apiRes.json();
+    const replyText = apiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    return res.status(200).json({ reply: replyText });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

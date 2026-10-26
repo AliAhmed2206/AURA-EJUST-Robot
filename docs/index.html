@@ -1115,7 +1115,7 @@ if (cfg.provider !== 'openrouter' && !cfg.geminiKey) {
 function setFaceStyle(s) { cfg.style = s; store.set('style_default_v2', s); }
 window.setFaceStyle = setFaceStyle;
 const hasBridge = () => true;
-const LIVE_BRIDGE_URL = 'https://over-tea-cia-remain.trycloudflare.com';
+const LIVE_BRIDGE_URL = 'https://independence-freebsd-expanding-defend.trycloudflare.com';
 
 // Purge any stale or dead tunnel references from previous sessions
 if (cfg.bridge && (cfg.bridge.includes('loca.lt') || cfg.bridge.includes('drawing-garlic') || cfg.bridge.includes('undefined'))) {
@@ -4275,7 +4275,17 @@ async function connectSerial() {
     serialKeepReading = true;
     readSerialLoop();
   } catch (err) {
-    if (err.name !== 'NotFoundError') {
+    const diagTitle = $('hudDiagTitle');
+    const diagBody = $('hudDiagBody');
+    if (err.name === 'NotFoundError') {
+      notice('No USB Serial COM port selected.', 4000);
+      if (diagTitle && diagBody) {
+        diagTitle.textContent = 'NO USB PORT SELECTED:';
+        diagBody.innerHTML = `
+          <div>Plug the ESP32 into your laptop using a micro-USB data cable, then click <strong>⚡ USB Serial</strong> and choose the Silicon Labs / CH340 COM port!</div>
+        `;
+      }
+    } else {
       notice('USB Serial: ' + err.message, 5000);
     }
   }
@@ -4372,23 +4382,42 @@ function announceSensorsAloud() {
 }
 
 async function checkWifiBridgeNow() {
-  notice('Checking Wi-Fi Gateway Bridge...', 2000);
+  const diagTitle = $('hudDiagTitle');
+  const diagBody = $('hudDiagBody');
+  notice('Checking Wi-Fi Gateway Bridge...', 2500);
+
   try {
     const bridge = bridgeBase();
-    const res = await fetch(`${bridge}/api/esp32/status`, { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(`${bridge}/api/esp32/status`, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       const data = await res.json();
       if (data.online) {
         hwState.wifiConnected = true;
-        notice('ESP32 Wi-Fi connected!', 3000);
+        notice('✅ ESP32 Wi-Fi Connected!', 3500);
       } else {
         hwState.wifiConnected = false;
-        notice('Bridge reachable, but ESP32 has not polled yet.', 4000);
+        notice('Bridge reachable at ' + bridge + ', but ESP32 has NOT joined or sent data yet!', 6000);
+        if (diagTitle && diagBody) {
+          diagTitle.textContent = 'WI-FI BRIDGE REACHABLE, BUT ESP32 IS OFFLINE:';
+          diagBody.innerHTML = `
+            <div><strong>Bridge status:</strong> Online at <code>${bridge}</code></div>
+            <div><strong>ESP32 status:</strong> Has not sent any telemetry packets yet.</div>
+            <div style="margin-top:4px;"><strong>How to resolve:</strong></div>
+            <div>1. If your robot is running <strong>Bluetooth code</strong> (VIP_Humanoid_ESP32.ino), click <strong>📶 Bluetooth</strong> above instead!</div>
+            <div>2. If using Wi-Fi, make sure ESP32 is powered on and connected to hotspot <strong>Ali</strong>.</div>
+            <div>3. Or plug ESP32 into USB and click <strong>⚡ USB Serial</strong>!</div>
+          `;
+        }
       }
       updateHwUi();
+      return;
     }
   } catch (e) {
-    notice('Could not connect to Wi-Fi bridge: ' + e.message, 4000);
+    notice('Wi-Fi bridge error: ' + e.message, 5000);
+    if (diagTitle && diagBody) {
+      diagTitle.textContent = 'COULD NOT REACH WI-FI BRIDGE:';
+      diagBody.innerHTML = `<div>Check that Antigravity Local Relay Bridge is running on port 8080 or test via <strong>📶 Bluetooth</strong> / <strong>⚡ USB Serial</strong>!</div>`;
+    }
   }
 }
 
@@ -4477,8 +4506,19 @@ async function connectBle() {
     });
     await attachBleGatt(dev);
   } catch (e) {
-    if (e.name !== 'NotFoundError') {
-      notice(`Bluetooth note: ${e.message}`, 5000);
+    const diagTitle = $('hudDiagTitle');
+    const diagBody = $('hudDiagBody');
+    if (e.name === 'NotFoundError') {
+      notice('Bluetooth pairing cancelled or no device selected.', 4000);
+      if (diagTitle && diagBody) {
+        diagTitle.textContent = 'BLUETOOTH PAIRING CANCELLED / DEVICE NOT FOUND:';
+        diagBody.innerHTML = `
+          <div>Make sure the robot is powered on with <strong>VIP_Humanoid_ESP32.ino</strong> uploaded.</div>
+          <div>In the browser popup, select <strong>AURA-BOT</strong> and click <strong>Pair</strong>.</div>
+        `;
+      }
+    } else {
+      notice(`Bluetooth error: ${e.message}`, 5000);
     }
     log('BLE error:', e.message);
   }
