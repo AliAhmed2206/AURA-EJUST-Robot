@@ -2872,28 +2872,195 @@ function captureCameraFrameB64() {
   }
 }
 
-function dispatchRobotAction(action) {
+
+// ======================================================================================
+// DYNAMIC MOVEMENT & DURATION INTENT PARSER (Seconds, Minutes & Single Wheels)
+// ======================================================================================
+function parseMovementIntent(rawText) {
+  if (!rawText) return null;
+  const t = rawText.toLowerCase().trim();
+  const ar = isArabic(rawText);
+
+  // 1. Extract Duration in Milliseconds (defaults to sensible standard if not specified)
+  let ms = null;
+
+  // Numerical seconds: e.g. "5 seconds", "5s", "5 sec", "10 seconds", "5 ثواني", "٥ ثواني"
+  const secMatch = t.match(/(\d+)\s*(s|sec|secs|second|seconds|ثانية|ثواني|ثوان)/i);
+  if (secMatch) {
+    ms = parseInt(secMatch[1], 10) * 1000;
+  }
+
+  // Word seconds
+  const wordNums = {
+    'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+    'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+    'fifteen': 15, 'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50, 'sixty': 60,
+    'واحد': 1, 'اتنين': 2, 'تلاتة': 3, 'اربعة': 4, 'خمسة': 5,
+    'ستة': 6, 'سبعة': 7, 'ثمانية': 8, 'تسعة': 9, 'عشرة': 10
+  };
+  for (const [w, n] of Object.entries(wordNums)) {
+    if (t.includes(w + ' second') || t.includes(w + ' sec') || t.includes(w + ' ثواني') || t.includes(w + ' ثانية')) {
+      ms = n * 1000;
+      break;
+    }
+  }
+
+  // Minutes: e.g. "a minute", "1 minute", "for a minute", "دقيقة", "نص دقيقة"
+  if (t.includes('half a minute') || t.includes('نص دقيقة') || t.includes('نصف دقيقة')) {
+    ms = 30000;
+  } else if (t.includes('minute') || t.includes('دقيقة') || t.includes('دقايق') || t.includes('دقائق')) {
+    const minMatch = t.match(/(\d+)\s*(m|min|mins|minute|minutes|دقيقة|دقايق)/i);
+    if (minMatch) {
+      ms = parseInt(minMatch[1], 10) * 60000;
+    } else {
+      ms = 60000; // default "a minute" -> 60s
+    }
+  }
+
+  // Safety clamp: min 300ms, max 120,000ms (2 minutes)
+  if (ms !== null) {
+    ms = Math.min(120000, Math.max(300, ms));
+  }
+
+  // Helper formatting for speech
+  const durSec = ms ? Math.round(ms / 1000) : null;
+  const durStrEn = durSec ? (durSec >= 60 ? `for ${Math.round(durSec/60)} minute${durSec>=120?'s':''}` : `for ${durSec} seconds`) : '';
+  const durStrAr = durSec ? (durSec >= 60 ? `لمدة ${Math.round(durSec/60)} دقيقة` : `لمدة ${durSec} ثواني`) : '';
+
+  // 2. Identify Direction & Wheel Action:
+
+  // A. Right Wheel Only / Right Motor
+  if (/(right wheel|right motor|right track|wheel.*right|motor.*right|العجلة اليمين|الماتور اليمين|المحرك اليمين|عجلة يمين|ماتور يمين)/i.test(t)) {
+    const targetMs = ms || 5000;
+    return {
+      cmd: 'TURN_RIGHT', // Powers right wheel/steer
+      action: 'RIGHT_WHEEL',
+      ms: targetMs,
+      speechEn: `Turning on the right wheel ${durStrEn || 'for 5 seconds'}!`,
+      speechAr: `حاضر، هشغل العجلة اليمين ${durStrAr || 'لمدة 5 ثواني'}!`
+    };
+  }
+
+  // B. Left Wheel Only / Left Motor
+  if (/(left wheel|left motor|left track|wheel.*left|motor.*left|العجلة الشمال|الماتور الشمال|المحرك الشمال|عجلة شمال|ماتور شمال)/i.test(t)) {
+    const targetMs = ms || 5000;
+    return {
+      cmd: 'TURN_LEFT', // Powers left wheel/steer
+      action: 'LEFT_WHEEL',
+      ms: targetMs,
+      speechEn: `Turning on the left wheel ${durStrEn || 'for 5 seconds'}!`,
+      speechAr: `حاضر، هشغل العجلة الشمال ${durStrAr || 'لمدة 5 ثواني'}!`
+    };
+  }
+
+  // C. Turn Right
+  if (/(turn right|spin right|steer right|rotate right|rotate to the right|حود يمين|لف يمين|دور يمين|يمين)/i.test(t)) {
+    const targetMs = ms || 1200;
+    return {
+      cmd: 'TURN_RIGHT',
+      action: 'TURN_RIGHT',
+      ms: targetMs,
+      speechEn: `Turning right ${durStrEn}!`,
+      speechAr: `حاضر، بحود يمين ${durStrAr}!`
+    };
+  }
+
+  // D. Turn Left
+  if (/(turn left|spin left|steer left|rotate left|rotate to the left|حود شمال|لف شمال|دور شمال|شمال)/i.test(t)) {
+    const targetMs = ms || 1200;
+    return {
+      cmd: 'TURN_LEFT',
+      action: 'TURN_LEFT',
+      ms: targetMs,
+      speechEn: `Turning left ${durStrEn}!`,
+      speechAr: `حاضر، بحود شمال ${durStrAr}!`
+    };
+  }
+
+  // E. Turn Around (180)
+  if (/(turn around|spin around|rotate 180|لف ورا|دور ورا|180)/i.test(t)) {
+    const targetMs = ms || 2200;
+    return {
+      cmd: 'TURN_RIGHT',
+      action: 'TURN_AROUND',
+      ms: targetMs,
+      speechEn: `Turning around ${durStrEn}!`,
+      speechAr: `بلف ورايا حالا ${durStrAr}!`
+    };
+  }
+
+  // F. Move Forward
+  if (/(move forward|go forward|drive forward|step forward|forward|ahead|straight|تحرك قدام|امشي قدام|اتحرك لقدام|اطلع قدام|قدام)/i.test(t)) {
+    const targetMs = ms || 2000;
+    return {
+      cmd: 'MOVE_FWD',
+      action: 'MOVE_FWD',
+      ms: targetMs,
+      speechEn: `Moving forward ${durStrEn}!`,
+      speechAr: `حاضر، بتحرك لقدام ${durStrAr}!`
+    };
+  }
+
+  // G. Move Backward / Reverse
+  if (/(move backward|back up|go back|reverse|backward|ارجع ورا|ارجعي ورا|اتحرك ورا|لورا|ورا)/i.test(t)) {
+    const targetMs = ms || 2000;
+    return {
+      cmd: 'MOVE_REV',
+      action: 'MOVE_REV',
+      ms: targetMs,
+      speechEn: `Backing up ${durStrEn}!`,
+      speechAr: `حاضر، برجع لورا ${durStrAr}!`
+    };
+  }
+
+  // H. Hard Stop
+  if (/(stop|halt|freeze|brake|قف|اقف|وقفي|فرمل|ستوب)/i.test(t)) {
+    return {
+      cmd: 'STOP',
+      action: 'STOP',
+      ms: 0,
+      speechEn: 'Stopping all motors immediately!',
+      speechAr: 'وقفت كل المواتير حالا!'
+    };
+  }
+
+  // I. Friendly Wave Gesture
+  if (/(wave|hi|hello|حيي|سلم|لوح|باي)/i.test(t) && /(wave|gesture|motion|لوح|سلم|حيي)/i.test(t)) {
+    return {
+      cmd: 'WAVE',
+      action: 'WAVE',
+      ms: 500,
+      speechEn: 'Waving at you! Hello there!',
+      speechAr: 'أهلاً بيك! بسلم عليك بإيدي!'
+    };
+  }
+
+  return null;
+}
+
+function dispatchRobotAction(action, targetMs) {
   if (!action) return;
   const a = String(action).toUpperCase().trim();
-  log('Dispatching robot action to ESP32:', a);
+  const ms = targetMs || 2000;
+  log('Dispatching robot action to ESP32:', a, 'Duration:', ms);
   if (a === 'ESCORT' || a === 'START_ESCORT') {
     sendBle({ cmd: 'START_ESCORT', name: hwState.lastNfcName || 'Guest', dest: 'Main Conference Hall', markers: 1 });
     hwState.state = 'ESCORTING';
     updateHwUi();
   } else if (a === 'FORWARD' || a === 'MOVE_FWD') {
-    sendBle({ cmd: 'MOVE_FWD', ms: 1500 });
+    sendBle({ cmd: 'MOVE_FWD', ms: ms });
     hwState.state = 'DRIVING';
     updateHwUi();
   } else if (a === 'BACKWARD' || a === 'BACK' || a === 'MOVE_REV') {
-    sendBle({ cmd: 'MOVE_REV', ms: 1500 });
+    sendBle({ cmd: 'MOVE_REV', ms: ms });
     hwState.state = 'DRIVING';
     updateHwUi();
   } else if (a === 'LEFT' || a === 'TURN_LEFT') {
-    sendBle({ cmd: 'TURN_LEFT', ms: 650 });
+    sendBle({ cmd: 'TURN_LEFT', ms: ms });
     hwState.state = 'DRIVING';
     updateHwUi();
   } else if (a === 'RIGHT' || a === 'TURN_RIGHT') {
-    sendBle({ cmd: 'TURN_RIGHT', ms: 650 });
+    sendBle({ cmd: 'TURN_RIGHT', ms: ms });
     hwState.state = 'DRIVING';
     updateHwUi();
   } else if (a === 'STOP' || a === 'HALT') {
@@ -3349,40 +3516,16 @@ async function handleTurn(userText, context) {
     history.push({ role: 'user', text: userText }, { role: 'model', text: t });
     return speak(t, 'SURPRISED', { holdAfter: 2000 });
   }
-  if (MOVE_FWD_RE.test(userText)) {
-    sendBle({ cmd: 'MOVE_FWD', ms: 1500 });
+  // Dynamic Voice Movement & Single-Wheel Controller with Variable Durations (5s, 10s, 1min)
+  const moveIntent = parseMovementIntent(userText);
+  if (moveIntent) {
+    sendBle({ cmd: moveIntent.cmd, ms: moveIntent.ms });
+    hwState.state = moveIntent.cmd === 'STOP' ? 'PAUSED' : 'DRIVING';
+    updateHwUi();
     const ar = isArabic(userText);
-    const t = ar ? 'حاضر، بتحرك لقدام!' : 'Moving forward!';
-    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
-    return speak(t, 'HAPPY', { holdAfter: 2000 });
-  }
-  if (MOVE_REV_RE.test(userText)) {
-    sendBle({ cmd: 'MOVE_REV', ms: 1500 });
-    const ar = isArabic(userText);
-    const t = ar ? 'حاضر، برجع لورا!' : 'Backing up!';
-    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
-    return speak(t, 'HAPPY', { holdAfter: 2000 });
-  }
-  if (TURN_RIGHT_RE.test(userText)) {
-    sendBle({ cmd: 'TURN_RIGHT', ms: 650 });
-    const ar = isArabic(userText);
-    const t = ar ? 'حاضر، بحود يمين!' : 'Turning right!';
-    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
-    return speak(t, 'HAPPY', { holdAfter: 1500 });
-  }
-  if (TURN_LEFT_RE.test(userText)) {
-    sendBle({ cmd: 'TURN_LEFT', ms: 650 });
-    const ar = isArabic(userText);
-    const t = ar ? 'حاضر، بحود شمال!' : 'Turning left!';
-    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
-    return speak(t, 'HAPPY', { holdAfter: 1500 });
-  }
-  if (TURN_AROUND_RE.test(userText)) {
-    sendBle({ cmd: 'TURN_RIGHT', ms: 1300 });
-    const ar = isArabic(userText);
-    const t = ar ? 'بلف ورايا حالا!' : 'Turning around!';
-    history.push({ role: 'user', text: userText }, { role: 'model', text: t });
-    return speak(t, 'HAPPY', { holdAfter: 2000 });
+    const speechReply = ar ? moveIntent.speechAr : moveIntent.speechEn;
+    history.push({ role: 'user', text: userText }, { role: 'model', text: speechReply });
+    return speak(speechReply, 'HAPPY', { holdAfter: Math.min(3500, moveIntent.ms) });
   }
 
   // Hall escort — instant, no waiting for the AI
