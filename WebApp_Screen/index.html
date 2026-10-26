@@ -346,6 +346,372 @@
     transform: scale(1.04);
     box-shadow: 0 0 14px rgba(0, 229, 255, 0.7);
   }
+
+  /* Live Hardware & Sensor Telemetry HUD */
+  #sensorHud {
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 8, 16, 0.82);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: hudFadeIn .25s ease-out;
+  }
+  @keyframes hudFadeIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .sensor-hud-card {
+    width: 100%;
+    max-width: 620px;
+    max-height: 92vh;
+    overflow-y: auto;
+    background: rgba(10, 16, 28, 0.96);
+    border: 1px solid rgba(0, 229, 255, 0.4);
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85), 0 0 30px rgba(0, 229, 255, 0.2);
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    color: #cfe9ff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .hud-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+    padding-bottom: 12px;
+  }
+  .hud-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .hud-pulse-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ff5252;
+    box-shadow: 0 0 10px #ff5252;
+    transition: all .3s ease;
+  }
+  .hud-pulse-dot.streaming {
+    background: #00e676;
+    box-shadow: 0 0 12px #00e676;
+    animation: hudPulse 1.2s infinite alternate;
+  }
+  @keyframes hudPulse {
+    from { opacity: 0.6; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1.25); }
+  }
+  .hud-main-title {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    color: #fff;
+    text-transform: uppercase;
+  }
+  .hud-sub-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #94a3b8;
+    letter-spacing: .05em;
+  }
+  .hud-sub-badge.live {
+    background: rgba(0, 230, 118, 0.2);
+    color: #00e676;
+    border: 1px solid rgba(0, 230, 118, 0.4);
+  }
+  .hud-close-x {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all .2s;
+  }
+  .hud-close-x:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .hud-conn-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .hud-conn-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #cfe9ff;
+    padding: 8px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+    text-align: center;
+  }
+  .hud-conn-btn:hover {
+    background: rgba(0, 229, 255, 0.15);
+    border-color: rgba(0, 229, 255, 0.5);
+    color: #fff;
+  }
+  .hud-conn-btn.active {
+    background: rgba(0, 230, 118, 0.2);
+    border-color: #00e676;
+    color: #00e676;
+    box-shadow: 0 0 10px rgba(0, 230, 118, 0.3);
+  }
+  .hud-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .hud-card-cell {
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .hud-card-cell.full-width {
+    grid-column: 1 / -1;
+  }
+  .hud-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .hud-cell-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #94a3b8;
+    letter-spacing: .06em;
+  }
+  .hud-badge-tag {
+    font-size: 9px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #94a3b8;
+    text-transform: uppercase;
+  }
+  .hud-badge-tag.danger {
+    background: rgba(255, 82, 82, 0.25);
+    color: #ff5252;
+    border: 1px solid rgba(255, 82, 82, 0.5);
+  }
+  .hud-badge-tag.ok {
+    background: rgba(0, 230, 118, 0.2);
+    color: #00e676;
+    border: 1px solid rgba(0, 230, 118, 0.4);
+  }
+  .hud-metric-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .hud-metric-value {
+    font-size: 28px;
+    font-weight: 900;
+    font-family: "JetBrains Mono", Consolas, monospace;
+    color: #00e5ff;
+  }
+  .hud-metric-value.danger {
+    color: #ff5252;
+    animation: hudBlink .5s infinite alternate;
+  }
+  @keyframes hudBlink {
+    from { opacity: 0.6; }
+    to { opacity: 1; }
+  }
+  .hud-metric-unit {
+    font-size: 11px;
+    color: #94a3b8;
+  }
+  .hud-meter-track {
+    position: relative;
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 99px;
+    overflow: hidden;
+    margin: 4px 0;
+  }
+  .hud-meter-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #ff5252 0%, #ffeb3b 30%, #00e5ff 100%);
+    border-radius: 99px;
+    transition: width .2s ease-out;
+  }
+  .hud-meter-danger-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 15%;
+    width: 2px;
+    background: #ff5252;
+  }
+  .hud-metric-caption {
+    font-size: 9.5px;
+    color: #64748b;
+  }
+  .hud-ir-visual-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 8px 0;
+  }
+  .hud-ir-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .hud-ir-pin {
+    font-size: 9px;
+    font-weight: 700;
+    color: #64748b;
+  }
+  .hud-ir-led {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 900;
+    color: #64748b;
+    transition: all .2s;
+  }
+  .hud-ir-led.on {
+    background: rgba(0, 229, 255, 0.3);
+    border-color: #00e5ff;
+    color: #00e5ff;
+    box-shadow: 0 0 16px #00e5ff;
+  }
+  .hud-ir-name {
+    font-size: 10px;
+    font-weight: 700;
+    color: #94a3b8;
+  }
+  .hud-ir-divider {
+    width: 1px;
+    height: 30px;
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .hud-ir-status-bar {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.08);
+    padding: 6px;
+    border-radius: 8px;
+  }
+  .hud-motor-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding-top: 4px;
+  }
+  .hud-motor-col {
+    background: rgba(0, 0, 0, 0.35);
+    border-radius: 8px;
+    padding: 8px;
+  }
+  .hud-motor-lbl {
+    font-size: 9px;
+    font-weight: 700;
+    color: #64748b;
+  }
+  .hud-motor-val {
+    font-size: 12px;
+    font-weight: 800;
+    color: #00e5ff;
+    font-family: monospace;
+    margin-top: 2px;
+  }
+  .hud-sim-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px dashed rgba(245, 158, 11, 0.4);
+    padding: 8px 12px;
+    border-radius: 10px;
+  }
+  .hud-sim-lbl {
+    font-size: 10px;
+    font-weight: 800;
+    color: #f59e0b;
+  }
+  #hudSimSlider {
+    flex: 1;
+    accent-color: #f59e0b;
+  }
+  #hudSimSliderVal {
+    font-size: 11px;
+    font-weight: 800;
+    color: #f59e0b;
+    font-family: monospace;
+  }
+  .hud-sim-btn-mini {
+    background: rgba(245, 158, 11, 0.2);
+    border: 1px solid #f59e0b;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .hud-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 12px;
+  }
+  .hud-speak-btn {
+    background: linear-gradient(135deg, #00e5ff, #7c4dff);
+    border: none;
+    color: #05030a;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 8px 16px;
+    border-radius: 99px;
+    cursor: pointer;
+    letter-spacing: .04em;
+    transition: all .2s;
+  }
+  .hud-speak-btn:hover {
+    transform: scale(1.04);
+    box-shadow: 0 0 16px rgba(0, 229, 255, 0.6);
+  }
+  .hud-footer-info {
+    font-size: 10px;
+    color: #64748b;
+    font-family: monospace;
+  }
+
 </style>
 </head>
 <body>
@@ -414,6 +780,141 @@
   </div>
   <div class="cam-bottom-bar">
     <div id="camTelemetry">OPTICAL SENSORS ACTIVE | NORDIC AI TRACKER</div>
+  </div>
+</div>
+
+
+<!-- Dedicated Live Hardware & Sensor Telemetry HUD Modal -->
+<div id="sensorHud" onclick="if(event.target===this) toggleSensorHud(false);">
+  <div class="sensor-hud-card" onclick="event.stopPropagation();">
+    <div class="hud-header">
+      <div class="hud-title-wrap">
+        <span class="hud-pulse-dot" id="hudStreamDot"></span>
+        <span class="hud-main-title">AURA LIVE SENSOR TELEMETRY & HARDWARE</span>
+        <span class="hud-sub-badge" id="hudStreamBadge">DISCONNECTED</span>
+      </div>
+      <button class="hud-close-x" onclick="toggleSensorHud(false)" title="Close Telemetry">✕</button>
+    </div>
+
+    <!-- Quick Connection Bar -->
+    <div class="hud-conn-strip">
+      <button class="hud-conn-btn" id="hudBtnUsb" onclick="connectSerial()" title="Connect via USB Cable (Chrome/Edge Web Serial)">
+        ⚡ USB Serial
+      </button>
+      <button class="hud-conn-btn" id="hudBtnBle" onclick="connectBle()" title="Connect wirelessly via Bluetooth">
+        📶 Bluetooth
+      </button>
+      <button class="hud-conn-btn" id="hudBtnWifi" onclick="checkWifiBridgeNow()" title="Check local Wi-Fi Hotspot bridge">
+        🌐 Wi-Fi Relay
+      </button>
+      <button class="hud-conn-btn" id="hudBtnSim" onclick="toggleSimTelemetry()" title="Toggle simulated live sensor waves for testing">
+        🎮 Simulator
+      </button>
+    </div>
+
+    <!-- Dual Ultrasonic Sonars -->
+    <div class="hud-grid-2">
+      <!-- Front Sonar -->
+      <div class="hud-card-cell" id="hudCardFront">
+        <div class="hud-card-top">
+          <span class="hud-cell-label">FRONT SONAR (Trig:19, Echo:35)</span>
+          <span class="hud-badge-tag" id="hudFrontTag">SAFE</span>
+        </div>
+        <div class="hud-metric-row">
+          <span class="hud-metric-value" id="hudValFront">--</span>
+          <span class="hud-metric-unit">cm ahead</span>
+        </div>
+        <div class="hud-meter-track">
+          <div class="hud-meter-bar" id="hudBarFront" style="width: 50%;"></div>
+          <div class="hud-meter-danger-line" title="15cm Stop Threshold"></div>
+        </div>
+        <div class="hud-metric-caption" id="hudFrontDesc">Safety Brake: Motors stop if &lt; 15 cm</div>
+      </div>
+
+      <!-- Rear Sonar -->
+      <div class="hud-card-cell" id="hudCardRear">
+        <div class="hud-card-top">
+          <span class="hud-cell-label">REAR SONAR (Trig:18, Echo:34)</span>
+          <span class="hud-badge-tag" id="hudRearTag">CLEAR</span>
+        </div>
+        <div class="hud-metric-row">
+          <span class="hud-metric-value" id="hudValRear">--</span>
+          <span class="hud-metric-unit">cm behind</span>
+        </div>
+        <div class="hud-meter-track">
+          <div class="hud-meter-bar" id="hudBarRear" style="width: 75%;"></div>
+          <div class="hud-meter-danger-line" title="15cm Reverse Safety"></div>
+        </div>
+        <div class="hud-metric-caption" id="hudRearDesc">Clearance for voice reversing maneuvers</div>
+      </div>
+    </div>
+
+    <!-- 3-Channel TCRT5000 IR Line Tracking Array -->
+    <div class="hud-card-cell full-width">
+      <div class="hud-card-top">
+        <span class="hud-cell-label">3-CHANNEL TCRT5000 IR LINE TRACKING ARRAY</span>
+        <span class="hud-badge-tag" id="hudLineTag">OFF LINE</span>
+      </div>
+      <div class="hud-ir-visual-row">
+        <!-- Left IR -->
+        <div class="hud-ir-item" id="hudIrLeftItem">
+          <div class="hud-ir-pin">PIN 32</div>
+          <div class="hud-ir-led" id="hudLedL">0</div>
+          <div class="hud-ir-name">LEFT IR</div>
+        </div>
+        <div class="hud-ir-divider"></div>
+        <!-- Center IR -->
+        <div class="hud-ir-item" id="hudIrCenterItem">
+          <div class="hud-ir-pin">PIN 23</div>
+          <div class="hud-ir-led" id="hudLedC">0</div>
+          <div class="hud-ir-name">CENTER IR</div>
+        </div>
+        <div class="hud-ir-divider"></div>
+        <!-- Right IR -->
+        <div class="hud-ir-item" id="hudIrRightItem">
+          <div class="hud-ir-pin">PIN 22</div>
+          <div class="hud-ir-led" id="hudLedR">0</div>
+          <div class="hud-ir-name">RIGHT IR</div>
+        </div>
+      </div>
+      <div class="hud-ir-status-bar" id="hudLineStatusDesc">
+        Awaiting live signal from robot...
+      </div>
+    </div>
+
+    <!-- L293D Dual DC Motor Drivers & Decision -->
+    <div class="hud-card-cell full-width">
+      <div class="hud-card-top">
+        <span class="hud-cell-label">L293D DUAL H-BRIDGE MOTOR DRIVE OUTPUT</span>
+        <span class="hud-badge-tag" id="hudMotorState">IDLE</span>
+      </div>
+      <div class="hud-motor-row">
+        <div class="hud-motor-col">
+          <div class="hud-motor-lbl">LEFT MOTOR (Pins 14, 27, 25)</div>
+          <div class="hud-motor-val" id="hudMotorL">+0 PWM (IDLE)</div>
+        </div>
+        <div class="hud-motor-col">
+          <div class="hud-motor-lbl">RIGHT MOTOR (Pins 26, 33, 13)</div>
+          <div class="hud-motor-val" id="hudMotorR">+0 PWM (IDLE)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive Simulator Slider (Shown when simulator active) -->
+    <div class="hud-sim-slider-row" id="hudSimControls" style="display:none;">
+      <span class="hud-sim-lbl">🎮 SIMULATOR OBSTACLE:</span>
+      <input type="range" id="hudSimSlider" min="5" max="150" value="45" oninput="onSimSliderChange(this.value)">
+      <span id="hudSimSliderVal">45 cm</span>
+      <button type="button" class="hud-sim-btn-mini" onclick="cycleSimIr()">Cycle IR Line</button>
+    </div>
+
+    <!-- Action Footer -->
+    <div class="hud-footer">
+      <button type="button" class="hud-speak-btn" onclick="announceSensorsAloud()">
+        🗣️ Speak Live Measures
+      </button>
+      <div class="hud-footer-info" id="hudLastUpdated">Last packet: Never</div>
+    </div>
   </div>
 </div>
 
@@ -2694,25 +3195,67 @@ async function handleTurn(userText, context) {
     return speak(t, 'HAPPY', { holdAfter: 2500 });
   }
 
-  // Explicit Technical Sensor & Motor Query Fast-Path (Knows which signal is which)
+  // Explicit Technical Sensor & Motor Query (Live Physics & Honest Telemetry)
   if (/(sensor|sonar|ultrasonic|reading|readings|infrared|ir sensors|motors?|how do you move|حساس|حساسات|قراءات|قراءة|سونار|مواتير|محركات)/i.test(userText) &&
-      /(what|how|show|status|reading|read|which|إيه|ايه|كام|قراءة|ازاي|إزاي|وضحي)/i.test(userText)) {
+      /(what|how|show|status|reading|read|which|إيه|ايه|كام|قراءة|ازاي|إزاي|وضحي|قارية)/i.test(userText)) {
     const ar = isArabic(userText);
-    const fDist = hwState.dist ?? '--';
-    const bDist = hwState.backDist ?? '--';
-    const irRaw = String(hwState.ir || '---');
+    
+    // Always open the live HUD visually so user can watch readings live
+    toggleSensorHud(true);
+
+    const isOnline = (hwState.connected || hwState.wifiConnected || hwState.serialConnected || hwState.simActive);
+    const isFresh = (Date.now() - (hwState.lastTelemetryTime || 0)) < 6500;
+
+    let textReply = '';
+    // 1. If robot is disconnected / offline: DO NOT RECITE MEMORIZED '-- cm'!
+    if (!isOnline || !isFresh || hwState.dist === null) {
+      if (ar) {
+        textReply = 'جسم الروبوت ESP32 غير متصل حالياً عشان أقيس لايف يا فندم. وصّل الروبوت بكابل الـ USB أو البلوتوث أو الواي فاي من اللوحة اللي ظاهرة قدامك، أو شغل المحاكاة عشان تجرب القياسات لايف!';
+      } else {
+        textReply = 'My ESP32 robot body is currently disconnected, so I am not receiving live physics measurements. Please connect via USB Cable, Bluetooth, or Wi-Fi using the panel on screen, or toggle the simulator to test!';
+      }
+      history.push({ role: 'user', text: userText }, { role: 'model', text: textReply });
+      return speak(textReply, 'NEUTRAL', { holdAfter: 5500 });
+    }
+
+    // 2. Connected & Fresh Live Telemetry:
+    const fDist = Math.round(hwState.dist);
+    const bDist = hwState.backDist !== null ? `${Math.round(hwState.backDist)} cm` : (ar ? 'غير متوفر' : 'N/A');
+    const irRaw = String(hwState.ir || '000').padEnd(3, '0');
     const L = irRaw[0] === '1' ? '1' : '0';
     const C = irRaw[1] === '1' ? '1' : '0';
     const R = irRaw[2] === '1' ? '1' : '0';
-    
-    let textReply = '';
-    if (ar) {
-      textReply = `السونار الأمامي قاري ${fDist} سنتيمتر قدامي، والسونار الخلفي قاري ${bDist} سنتيمتر ورايا. وحساسات التتبع التلاتة: الشمال ${L}، الوسط ${C}، واليمين ${R}. وبتحكم في الماتور الشمال واليمين حسب الخط، ولو في عائق قدامي أقل من 15 سم بقف فوراً!`;
+
+    let lineStatusAr = '';
+    let lineStatusEn = '';
+    if (L === '0' && C === '1' && R === '0') {
+      lineStatusAr = 'في منتصف مسار الخط تماماً';
+      lineStatusEn = 'perfectly centered on the line';
+    } else if (L === '1' && R === '0') {
+      lineStatusAr = 'حاود للشمال وبظبط لليمين';
+      lineStatusEn = 'veering left and steering right to correct';
+    } else if (R === '1' && L === '0') {
+      lineStatusAr = 'حاود لليمين وبظبط للشمال';
+      lineStatusEn = 'veering right and steering left to correct';
+    } else if (L === '1' && C === '1' && R === '1') {
+      lineStatusAr = 'فوق محطة وصول وتقاطع خطوط';
+      lineStatusEn = 'over an intersection station marker';
     } else {
-      textReply = `My front ultrasonic reads ${fDist} cm ahead, and my rear ultrasonic reads ${bDist} cm behind. My 3 IR sensors are: Left is ${L}, Center is ${C}, and Right is ${R}. I control my Left and Right motors based on these readings, and stop immediately if an obstacle is under 15 cm!`;
+      lineStatusAr = 'خارج الخط الأسود';
+      lineStatusEn = 'off the guide line';
     }
+
+    const motorAr = (fDist < 15) ? 'والمواتير واقفة للطوارئ لوجود عائق قريب' : 'والمواتير ماشية بسرعة 170 للأمام';
+    const motorEn = (fDist < 15) ? 'Motors are halted for collision safety' : 'Motors are cruising forward at 170 PWM';
+
+    if (ar) {
+      textReply = `القياسات الحية دلوقتي: السونار الأمامي قاري ${fDist} سم قدامي، والسونار الخلفي ${bDist}. وحساسات الخط التلاتة: الشمال ${L}، الوسط ${C}، واليمين ${R}، وده معناه إن الروبوت ${lineStatusAr}، ${motorAr}!`;
+    } else {
+      textReply = `Live telemetry right now: Front ultrasonic reads ${fDist} cm ahead, rear ultrasonic reads ${bDist}. The 3 IR line sensors are: Left is ${L}, Center is ${C}, Right is ${R}. This indicates I am ${lineStatusEn}, and ${motorEn}!`;
+    }
+
     history.push({ role: 'user', text: userText }, { role: 'model', text: textReply });
-    return speak(textReply, 'CURIOUS', { holdAfter: 5500 });
+    return speak(textReply, 'HAPPY', { holdAfter: 6000 });
   }
 
     // Voice control for stopping / pausing physical escort
@@ -3366,15 +3909,20 @@ function findVipCard(uid) {
 }
 
 const hwState = {
-  connected: false,
-  wifiConnected: false,
+  connected: false,         // Web Bluetooth (BLE)
+  wifiConnected: false,     // Wi-Fi Local/Cloud Bridge
+  serialConnected: false,   // USB Web Serial (COM Port)
+  simActive: false,         // Live Simulator Mode
   wifiIp: '',
   deviceName: '',
   state: 'IDLE',
-  dist: null,
-  backDist: null,
-  ir: '---',
+  dist: null,               // Front ultrasonic cm (Trig: 19, Echo: 35)
+  backDist: null,           // Rear ultrasonic cm (Trig: 18, Echo: 34)
+  ir: '---',                // 3 IR bits [L C R] (Pins 32, 23, 22)
   markers: 0,
+  leftMotor: 0,
+  rightMotor: 0,
+  lastTelemetryTime: 0,
   lastNfcUid: 'NONE',
   lastNfcValid: null,
   lastNfcName: '',
@@ -3436,18 +3984,349 @@ function getHardwareContextString() {
   return parts.join('; ');
 }
 
+
+// ======================================================================================
+// LIVE SENSOR TELEMETRY HUD & WEB SERIAL API
+// ======================================================================================
+
+function toggleSensorHud(show) {
+  const hud = $('sensorHud');
+  if (!hud) return;
+  if (typeof show === 'boolean') {
+    hud.style.display = show ? 'flex' : 'none';
+  } else {
+    hud.style.display = (hud.style.display === 'flex') ? 'none' : 'flex';
+  }
+  if (hud.style.display === 'flex') {
+    updateLiveHud();
+  }
+}
+
+function updateLiveHud() {
+  const isOnline = (hwState.connected || hwState.wifiConnected || hwState.serialConnected || hwState.simActive);
+  const isFresh = (Date.now() - (hwState.lastTelemetryTime || 0)) < 6500;
+  const activeStream = isOnline && (hwState.simActive || isFresh);
+
+  // Update connection buttons
+  if ($('hudBtnUsb')) $('hudBtnUsb').className = 'hud-conn-btn' + (hwState.serialConnected ? ' active' : '');
+  if ($('hudBtnBle')) $('hudBtnBle').className = 'hud-conn-btn' + (hwState.connected ? ' active' : '');
+  if ($('hudBtnWifi')) $('hudBtnWifi').className = 'hud-conn-btn' + (hwState.wifiConnected ? ' active' : '');
+  if ($('hudBtnSim')) $('hudBtnSim').className = 'hud-conn-btn hud-sim-btn' + (hwState.simActive ? ' active' : '');
+
+  // Stream indicator
+  const dot = $('hudStreamDot');
+  const badge = $('hudStreamBadge');
+  if (dot && badge) {
+    if (activeStream) {
+      dot.className = 'hud-pulse-dot streaming';
+      const src = hwState.simActive ? 'SIMULATOR' : hwState.serialConnected ? 'USB SERIAL' : hwState.connected ? 'BLUETOOTH' : 'WI-FI';
+      badge.className = 'hud-sub-badge live';
+      badge.textContent = `LIVE STREAMING (${src})`;
+    } else {
+      dot.className = 'hud-pulse-dot';
+      badge.className = 'hud-sub-badge';
+      badge.textContent = 'OFFLINE / DISCONNECTED';
+    }
+  }
+
+  // Front Sonar (Trig: 19, Echo: 35)
+  const fVal = $('hudValFront');
+  const fBar = $('hudBarFront');
+  const fTag = $('hudFrontTag');
+  const fDesc = $('hudFrontDesc');
+  if (fVal && fBar && fTag && fDesc) {
+    if (hwState.dist !== null) {
+      const d = Math.round(hwState.dist);
+      fVal.textContent = d;
+      fBar.style.width = Math.min(100, Math.max(5, (d / 120) * 100)) + '%';
+      if (d < 15) {
+        fVal.className = 'hud-metric-value danger';
+        fTag.className = 'hud-badge-tag danger';
+        fTag.textContent = 'OBSTACLE STOP!';
+        fDesc.textContent = `CRITICAL: Obstacle at ${d}cm (<15cm threshold)! Motors halted for safety.`;
+      } else {
+        fVal.className = 'hud-metric-value';
+        fTag.className = 'hud-badge-tag ok';
+        fTag.textContent = 'SAFE';
+        fDesc.textContent = `Path Clear: Front obstacle at ${d}cm (>15cm threshold). Cruising safe.`;
+      }
+    } else {
+      fVal.textContent = '--';
+      fVal.className = 'hud-metric-value';
+      fBar.style.width = '0%';
+      fTag.className = 'hud-badge-tag';
+      fTag.textContent = 'NO DATA';
+      fDesc.textContent = 'Awaiting front sonar telemetry from Trig:19 / Echo:35';
+    }
+  }
+
+  // Rear Sonar (Trig: 18, Echo: 34)
+  const rVal = $('hudValRear');
+  const rBar = $('hudBarRear');
+  const rTag = $('hudRearTag');
+  const rDesc = $('hudRearDesc');
+  if (rVal && rBar && rTag && rDesc) {
+    if (hwState.backDist !== null) {
+      const d = Math.round(hwState.backDist);
+      rVal.textContent = d;
+      rBar.style.width = Math.min(100, Math.max(5, (d / 120) * 100)) + '%';
+      if (d < 15) {
+        rVal.className = 'hud-metric-value danger';
+        rTag.className = 'hud-badge-tag danger';
+        rTag.textContent = 'BLOCKED';
+        rDesc.textContent = `Rear Obstacle at ${d}cm! Reverse maneuver blocked for safety.`;
+      } else {
+        rVal.className = 'hud-metric-value';
+        rTag.className = 'hud-badge-tag ok';
+        rTag.textContent = 'CLEAR';
+        rDesc.textContent = `Rear clearance is ${d}cm — clear for reverse voice moves.`;
+      }
+    } else {
+      rVal.textContent = '--';
+      rVal.className = 'hud-metric-value';
+      rBar.style.width = '0%';
+      rTag.className = 'hud-badge-tag';
+      rTag.textContent = 'NO DATA';
+      rDesc.textContent = 'Awaiting rear sonar telemetry from Trig:18 / Echo:34';
+    }
+  }
+
+  // 3 IR Line Sensors (L: 32, C: 23, R: 22)
+  const irStr = String(hwState.ir || '---').padEnd(3, '-');
+  const L = irStr[0] === '1';
+  const C = irStr[1] === '1';
+  const R = irStr[2] === '1';
+
+  const ledL = $('hudLedL'); if (ledL) { ledL.className = 'hud-ir-led' + (L ? ' on' : ''); ledL.textContent = L ? '1' : '0'; }
+  const ledC = $('hudLedC'); if (ledC) { ledC.className = 'hud-ir-led' + (C ? ' on' : ''); ledC.textContent = C ? '1' : '0'; }
+  const ledR = $('hudLedR'); if (ledR) { ledR.className = 'hud-ir-led' + (R ? ' on' : ''); ledR.textContent = R ? '1' : '0'; }
+
+  const lineTag = $('hudLineTag');
+  const lineDesc = $('hudLineStatusDesc');
+  let motorLText = '+0 PWM (IDLE)';
+  let motorRText = '+0 PWM (IDLE)';
+  let motorStateText = hwState.state || 'IDLE';
+
+  if (hwState.dist !== null && hwState.dist < 15) {
+    if (lineTag) { lineTag.className = 'hud-badge-tag danger'; lineTag.textContent = 'HALTED'; }
+    if (lineDesc) lineDesc.textContent = '🚨 EMERGENCY BRAKE: Obstacle within 15 cm ahead!';
+    motorLText = '0 PWM (HALTED)';
+    motorRText = '0 PWM (HALTED)';
+    motorStateText = 'SAFETY STOP';
+  } else if (!L && C && !R) {
+    if (lineTag) { lineTag.className = 'hud-badge-tag ok'; lineTag.textContent = 'CENTERED'; }
+    if (lineDesc) lineDesc.textContent = '✓ Line Centered: Center sensor [Pin 23] locked on guide line. High-speed cruising.';
+    motorLText = '+170 PWM (FORWARD)';
+    motorRText = '+170 PWM (FORWARD)';
+    motorStateText = 'CRUISING';
+  } else if (L && !R) {
+    if (lineTag) { lineTag.className = 'hud-badge-tag ok'; lineTag.textContent = 'VEERING LEFT'; }
+    if (lineDesc) lineDesc.textContent = '↩ Left Sensor Active: Drifting left. Left motor slowed to 85, Right steered to 200.';
+    motorLText = '+85 PWM (SLOW)';
+    motorRText = '+200 PWM (STEER)';
+    motorStateText = 'CORRECTING RIGHT';
+  } else if (R && !L) {
+    if (lineTag) { lineTag.className = 'hud-badge-tag ok'; lineTag.textContent = 'VEERING RIGHT'; }
+    if (lineDesc) lineDesc.textContent = '↪ Right Sensor Active: Drifting right. Left steered to 200, Right slowed to 85.';
+    motorLText = '+200 PWM (STEER)';
+    motorRText = '+85 PWM (SLOW)';
+    motorStateText = 'CORRECTING LEFT';
+  } else if (L && C && R) {
+    if (lineTag) { lineTag.className = 'hud-badge-tag ok'; lineTag.textContent = 'STATION MARKER'; }
+    if (lineDesc) lineDesc.textContent = `★ T-Junction / Cross-line Station Marker detected! Checkpoint: ${hwState.markers}`;
+    motorLText = '+170 PWM (ROLLING)';
+    motorRText = '+170 PWM (ROLLING)';
+    motorStateText = 'AT CHECKPOINT';
+  } else if (!L && !C && !R) {
+    if (lineTag) { lineTag.className = 'hud-badge-tag'; lineTag.textContent = 'OFF LINE'; }
+    if (lineDesc) lineDesc.textContent = '○ All 3 line sensors off track. Line search mode active.';
+    motorLText = '0 PWM (SEARCH)';
+    motorRText = '0 PWM (SEARCH)';
+    motorStateText = 'LINE LOST';
+  } else {
+    if (lineTag) { lineTag.className = 'hud-badge-tag'; lineTag.textContent = 'TRANSITION'; }
+    if (lineDesc) lineDesc.textContent = 'Tracking pattern: [' + (L?'1':'0') + ' ' + (C?'1':'0') + ' ' + (R?'1':'0') + ']';
+  }
+
+  if ($('hudMotorL')) $('hudMotorL').textContent = motorLText;
+  if ($('hudMotorR')) $('hudMotorR').textContent = motorRText;
+  if ($('hudMotorState')) $('hudMotorState').textContent = motorStateText;
+
+  const updateEl = $('hudLastUpdated');
+  if (updateEl) {
+    if (hwState.lastTelemetryTime > 0) {
+      const ago = Math.max(0, Date.now() - hwState.lastTelemetryTime);
+      updateEl.textContent = `Last packet: ${ago}ms ago`;
+    } else {
+      updateEl.textContent = 'Last packet: Never';
+    }
+  }
+}
+
+// -------------------- Web Serial (USB Cable Link) --------------------
+let serialPort = null;
+let serialReader = null;
+let serialWriter = null;
+let serialKeepReading = false;
+
+async function connectSerial() {
+  if (!navigator.serial) {
+    notice('Web Serial requires Chrome or Edge on desktop (or Android Chrome).', 5000);
+    return;
+  }
+  try {
+    notice('Selecting ESP32 USB COM Port...', 2500);
+    serialPort = await navigator.serial.requestPort();
+    await serialPort.open({ baudRate: 115200 });
+    hwState.serialConnected = true;
+    hwState.deviceName = 'ESP32-USB';
+    updateHwUi();
+    notice('Connected to ESP32 over USB Serial (115200 baud)!', 4000);
+    showNfcBanner('⚡ USB Serial Connected', 'valid', 3000);
+
+    const encoder = new TextEncoderStream();
+    encoder.readable.pipeTo(serialPort.writable).catch(() => {});
+    serialWriter = encoder.writable.getWriter();
+
+    serialKeepReading = true;
+    readSerialLoop();
+  } catch (err) {
+    if (err.name !== 'NotFoundError') {
+      notice('USB Serial: ' + err.message, 5000);
+    }
+  }
+}
+
+async function readSerialLoop() {
+  let buf = '';
+  while (serialPort && serialPort.readable && serialKeepReading) {
+    const textDecoder = new TextDecoderStream();
+    serialPort.readable.pipeTo(textDecoder.writable).catch(() => {});
+    serialReader = textDecoder.readable.getReader();
+    try {
+      while (true) {
+        const { value, done } = await serialReader.read();
+        if (done) break;
+        if (value) {
+          buf += value;
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed) {
+              if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                onEsp32(trimmed);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+    } finally {
+      try { serialReader.releaseLock(); } catch(e){}
+    }
+  }
+  hwState.serialConnected = false;
+  updateHwUi();
+}
+
+// -------------------- Live Simulator --------------------
+let simTimer = null;
+let simAngle = 0;
+const simIrPatterns = ['010', '100', '001', '111', '010', '010'];
+let simIrIndex = 0;
+
+function toggleSimTelemetry() {
+  hwState.simActive = !hwState.simActive;
+  const controls = $('hudSimControls');
+  if (hwState.simActive) {
+    if (controls) controls.style.display = 'flex';
+    notice('🎮 Live Sensor Simulator ACTIVE', 3000);
+    simTimer = setInterval(() => {
+      simAngle += 0.12;
+      const dynamicDist = Math.round(48 + Math.sin(simAngle) * 32);
+      const dynamicBack = Math.round(85 + Math.cos(simAngle * 0.7) * 20);
+      hwState.dist = dynamicDist;
+      hwState.backDist = dynamicBack;
+      hwState.lastTelemetryTime = Date.now();
+      if (Math.random() < 0.2) {
+        simIrIndex = (simIrIndex + 1) % simIrPatterns.length;
+        hwState.ir = simIrPatterns[simIrIndex];
+      }
+      updateHwUi();
+    }, 350);
+  } else {
+    if (controls) controls.style.display = 'none';
+    if (simTimer) { clearInterval(simTimer); simTimer = null; }
+    if (!hwState.connected && !hwState.wifiConnected && !hwState.serialConnected) {
+      hwState.dist = null;
+      hwState.backDist = null;
+      hwState.ir = '---';
+    }
+    notice('Live Simulator Stopped', 2000);
+    updateHwUi();
+  }
+}
+
+function onSimSliderChange(val) {
+  hwState.dist = parseInt(val, 10);
+  hwState.lastTelemetryTime = Date.now();
+  const lbl = $('hudSimSliderVal');
+  if (lbl) lbl.textContent = val + ' cm';
+  updateHwUi();
+}
+
+function cycleSimIr() {
+  simIrIndex = (simIrIndex + 1) % simIrPatterns.length;
+  hwState.ir = simIrPatterns[simIrIndex];
+  hwState.lastTelemetryTime = Date.now();
+  updateHwUi();
+}
+
+function announceSensorsAloud() {
+  handleTurn('What are your sensors reading?');
+}
+
+async function checkWifiBridgeNow() {
+  notice('Checking Wi-Fi Gateway Bridge...', 2000);
+  try {
+    const bridge = bridgeBase();
+    const res = await fetch(`${bridge}/api/esp32/status`, { signal: AbortSignal.timeout(2000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.online) {
+        hwState.wifiConnected = true;
+        notice('ESP32 Wi-Fi connected!', 3000);
+      } else {
+        hwState.wifiConnected = false;
+        notice('Bridge reachable, but ESP32 has not polled yet.', 4000);
+      }
+      updateHwUi();
+    }
+  } catch (e) {
+    notice('Could not connect to Wi-Fi bridge: ' + e.message, 4000);
+  }
+}
+
 function updateHwUi() {
   const badge = $('bleBadge');
   if (badge) {
-    if (hwState.connected) {
+    const distStr = (hwState.dist !== null && hwState.dist < 990) ? ` (${Math.round(hwState.dist)}cm)` : '';
+    if (hwState.serialConnected) {
       badge.className = 'connected';
-      badge.textContent = `● BLE: ${hwState.state}${hwState.dist && hwState.dist < 100 ? ' (' + hwState.dist + 'cm)' : ''}`;
+      badge.textContent = `● USB: ${hwState.state}${distStr}`;
+    } else if (hwState.connected) {
+      badge.className = 'connected';
+      badge.textContent = `● BLE: ${hwState.state}${distStr}`;
     } else if (hwState.wifiConnected) {
       badge.className = 'connected';
-      badge.textContent = `● WI-FI: ${hwState.state}${hwState.dist && hwState.dist < 100 ? ' (' + hwState.dist + 'cm)' : ''}`;
+      badge.textContent = `● WI-FI: ${hwState.state}${distStr}`;
+    } else if (hwState.simActive) {
+      badge.className = 'connected';
+      badge.textContent = `● SIM: ${hwState.state}${distStr}`;
     } else {
       badge.className = '';
-      badge.textContent = '● ESP32: PAIR / WI-FI';
+      badge.textContent = '● ESP32: CONNECT / HUD';
     }
   }
   const box = $('hwTelemetry');
@@ -3461,6 +4340,7 @@ function updateHwUi() {
     const lines = Object.entries(vipCards).map(([uid, info]) => `✓ ${uid}  →  ${info.name} (${info.dest}, ${info.markers} mkr)`);
     listEl.textContent = `Registered Valid VIP Cards (${lines.length}):\n` + lines.join('\n');
   }
+  updateLiveHud();
 }
 
 function showNfcBanner(msg, type = 'valid', ms = 5500) {
@@ -3576,6 +4456,11 @@ async function sendBle(obj) {
       body: JSON.stringify(obj)
     }).catch(() => {});
   } catch (e) {}
+  if (serialWriter) {
+    try {
+      serialWriter.write(JSON.stringify(obj) + '\n').catch(() => {});
+    } catch(e) {}
+  }
   if (!bleRx) return;
   const data = new TextEncoder().encode(JSON.stringify(obj) + '\n');
   try {
@@ -3610,11 +4495,13 @@ function onEsp32(raw) {
   let d; try { d = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (e) { return; }
   const ar = cfg.lang === 'ar-EG';
 
-  if (d.event === 'STATUS') {
+  if (d.event === 'STATUS' || typeof d.dist === 'number') {
     if (d.state) hwState.state = d.state;
-    if (typeof d.dist === 'number') hwState.dist = d.dist;
-    if (d.ir) hwState.ir = d.ir;
+    if (typeof d.dist === 'number' && d.dist < 990) hwState.dist = Math.round(d.dist);
+    if (typeof d.back_dist === 'number' && d.back_dist < 990) hwState.backDist = Math.round(d.back_dist);
+    if (d.ir) hwState.ir = String(d.ir).padStart(3, '0').slice(0, 3);
     if (typeof d.markers === 'number') hwState.markers = d.markers;
+    hwState.lastTelemetryTime = Date.now();
     updateHwUi();
     return;
   }
@@ -3745,8 +4632,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 $('bleBadge').onclick = (e) => {
   e.stopPropagation();
-  if (!hwState.connected) connectBle();
-  else openSettings();
+  toggleSensorHud();
 };
 
 async function wake() {
@@ -4089,7 +4975,7 @@ setInterval(async () => {
   } catch (e) {}
 }, 2000);
 
-window.AURA = { setEmotion, setFaceStyle, speak, handleTurn, sendBle, onEsp32, registerCardUid, bargeIn, gaze, history, hwState, vipCards, get state() { return { emotion, isSpeaking, thinking, awake, style: cfg.style, hwState }; } };
+window.AURA = { setEmotion, setFaceStyle, speak, handleTurn, sendBle, onEsp32, connectSerial, toggleSensorHud, toggleSimTelemetry, registerCardUid, bargeIn, gaze, history, hwState, vipCards, get state() { return { emotion, isSpeaking, thinking, awake, style: cfg.style, hwState }; } };
 </script>
 </body>
 </html>
