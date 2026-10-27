@@ -58,6 +58,14 @@
   #settingsBtn { border-color: #b388ff; color: #d1c4e9; box-shadow: 0 0 12px rgba(179,136,255,.25); }
   #settingsBtn:hover { background: #b388ff; color: #05030a; box-shadow: 0 0 20px rgba(179,136,255,.6); }
 
+  #emergencyBtn { padding: 6px 14px; border-radius: 99px; font-size: 11px; font-weight: 800; letter-spacing: .08em;
+    background: rgba(45,10,18,.9); border: 1.5px solid #ff1744; color: #ff5252; cursor: pointer;
+    backdrop-filter: blur(6px); box-shadow: 0 0 14px rgba(255,23,68,.35); transition: all .25s ease; user-select: none;
+    display: inline-flex; align-items: center; gap: 5px; }
+  #emergencyBtn:hover { background: #ff1744; color: #ffffff; box-shadow: 0 0 24px rgba(255,23,68,.85); transform: scale(1.03); }
+  #emergencyBtn.active { background: #ff1744; color: #ffffff; animation: pulseAlert 0.7s infinite alternate; }
+  @keyframes pulseAlert { from { box-shadow: 0 0 15px #ff1744; } to { box-shadow: 0 0 30px #ff5252; } }
+
   #nfcBanner { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: 99px;
     font-size: 13px; font-weight: 600; letter-spacing: .06em; background: rgba(11,7,20,.9); border: 1px solid #00e5ff;
     color: #e6f4ff; box-shadow: 0 0 22px rgba(0,229,255,.35); z-index: 9; display: none; pointer-events: none; white-space: nowrap; }
@@ -766,6 +774,7 @@
   <div id="langBadge" title="Tap to switch Language (English / العربية)">🌐 EN</div>
   <div id="micBadge" title="Microphone Status (Tap to unblock/allow)">🎙️ LISTENING</div>
   <div style="flex:1"></div>
+  <button id="emergencyBtn" title="EMERGENCY STOP / SWITCH TO AUTONOMOUS FAILSAFE">🛑 EMERGENCY OVERRIDE</button>
   <button id="chatToggleBtn" title="Toggle Command & Chat Bar (Hide / Show)">💬 CHAT</button>
   <button id="camBtn" title="See what AURA sees in Fullscreen">📷 CAMERA</button>
   <button id="settingsBtn" title="AURA Brain, Face Style & Hardware Settings">⚙️ SETTINGS</button>
@@ -5083,6 +5092,58 @@ $('camBtn').onclick = (e) => {
     closeCamera();
   }
 };
+function triggerEmergencyOverride() {
+  log('🛑 EMERGENCY OVERRIDE TRIGGERED BY USER!');
+  
+  // 1. Immediately cancel all active speech and AI audio
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  if (typeof audioCtx !== 'undefined' && audioCtx) {
+    try { audioCtx.suspend(); setTimeout(() => audioCtx.resume(), 300); } catch (e) {}
+  }
+  if (chatCtrl) { try { chatCtrl.abort(); } catch(e){} }
+  isTalking = false;
+  
+  // 2. Clear chained movement delays
+  if (typeof chainedQueueTimer !== 'undefined' && chainedQueueTimer) {
+    clearTimeout(chainedQueueTimer);
+    chainedQueueTimer = null;
+  }
+  isChainedMoving = false;
+  
+  // 3. Dispatch EMERGENCY_STOP across all channels (Wi-Fi, Bluetooth, Serial)
+  sendBle({ cmd: 'EMERGENCY_STOP', ms: 0 });
+  hwState.state = 'PAUSED';
+  updateHwUi();
+  
+  // 4. Clear queue on the local relay bridge
+  try {
+    fetch(`${bridgeBase()}/api/esp32/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cmd: 'EMERGENCY_STOP' })
+    }).catch(() => {});
+  } catch(e) {}
+  
+  // 5. Visual alert badge
+  const btn = $('emergencyBtn');
+  if (btn) {
+    btn.classList.add('active');
+    setTimeout(() => btn.classList.remove('active'), 5000);
+  }
+  notice('🛑 EMERGENCY STOP ACTIVATED! AI Disengaged -> ESP32 Autonomous Hardware Control Active', 6000);
+  
+  // 6. Voice confirmation
+  const ar = isArabicLang();
+  speakSentence(ar ? 'تم التوقف الفوري في حالات الطوارئ! التحكم الآن ذاتي في الهاردوير.' : 'Emergency override active! Motors stopped. Robot switched to autonomous failsafe mode.');
+}
+
+if ($('emergencyBtn')) {
+  $('emergencyBtn').onclick = (e) => {
+    e.stopPropagation();
+    triggerEmergencyOverride();
+  };
+}
+
 $('settingsBtn').onclick = (e) => { e.stopPropagation(); openSettings(); };
 if ($('camModeBtn')) $('camModeBtn').onclick = (e) => { e.stopPropagation(); toggleCamMode(); };
 $('camCloseBtn').onclick = (e) => { e.stopPropagation(); closeCamera(); };
