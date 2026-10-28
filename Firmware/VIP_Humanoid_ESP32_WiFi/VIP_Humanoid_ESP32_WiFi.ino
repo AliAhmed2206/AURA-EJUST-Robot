@@ -1006,35 +1006,16 @@ void pollRelayCommands() {
 
 
 
-        if (consecutiveFailures >= 5 && currentServerUrl == SERVER_BASE_URL) {
-
-
-
-            Serial.println("[WI-FI] Local LAN response pending. Switching to Cloud Tunnel URL...");
-
-
-
-            // Locked to local PC gateway: keep retrying local IP
-            currentServerUrl = SERVER_BASE_URL;
-
-
-
+        if (consecutiveFailures >= 5) {
+            Serial.println("[WI-FI] Connection timed out. Re-querying mDNS for updated Laptop IP (Ali-Mohamed.local)...");
+            IPAddress pcIP = MDNS.queryHost("Ali-Mohamed", 1500);
+            if (pcIP != INADDR_NONE) {
+                currentServerUrl = "http://" + pcIP.toString() + ":8080";
+                Serial.println("[mDNS AUTO-DISCOVERY] Dynamic IP updated! Resuming.");
+            } else {
+                currentServerUrl = SERVER_BASE_URL;
+            }
             consecutiveFailures = 0;
-
-
-
-        } else if (consecutiveFailures >= 10 && currentServerUrl == CLOUD_TUNNEL_URL) {
-
-
-
-            currentServerUrl = SERVER_BASE_URL;
-
-
-
-            consecutiveFailures = 0;
-
-
-
         }
 
 
@@ -1767,34 +1748,23 @@ void loop() {
 
 
 
+    static bool wasDisconnected = false;
     if (WiFi.status() != WL_CONNECTED) {
-
-
-
+        wasDisconnected = true;
         static unsigned long lastReconnectAttempt = 0;
-
-
-
         if (now - lastReconnectAttempt > 5000) {
-
-
-
             lastReconnectAttempt = now;
-
-
-
             Serial.println("[WI-FI] Reconnecting...");
-
-
-
             WiFi.reconnect();
-
-
-
         }
-
-
-
+    } else if (wasDisconnected) {
+        wasDisconnected = false;
+        Serial.println("[WI-FI] Reconnected to hotspot! Re-discovering Laptop IP via mDNS...");
+        IPAddress pcIP = MDNS.queryHost("Ali-Mohamed", 2000);
+        if (pcIP != INADDR_NONE) {
+            currentServerUrl = "http://" + pcIP.toString() + ":8080";
+            Serial.println("[mDNS AUTO-DISCOVERY] Found Laptop via mDNS!");
+        }
     }
 
 
