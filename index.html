@@ -1167,11 +1167,9 @@ const bridgeBase = () => {
   if (cfg.bridge && cfg.bridge.trim() && !cfg.bridge.includes('loca.lt') && !cfg.bridge.includes('drawing-garlic')) {
     return cfg.bridge.trim().replace(/\/+$/, '');
   }
-  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-    return (location.protocol + '//' + location.host).replace(/\/+$/, '');
-  }
-  if (location.hostname.includes('vercel.app')) {
-    return location.origin;
+  // Always use the origin of the server that served the page (phone LAN IP, hostname, or localhost)
+  if (location.origin && location.origin.startsWith('http')) {
+    return location.origin.replace(/\/+$/, '');
   }
   return LIVE_BRIDGE_URL;
 };
