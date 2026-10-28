@@ -204,14 +204,12 @@ String currentServerUrl = SERVER_BASE_URL;
 
 #define B_ECHO 34
 
-// ---------- MFRC522 NFC / RFID CARD READER PINS ----------
-// Standard ESP32 VSPI Default Pins: SCK=18, MISO=19, MOSI=23, SS=5, RST=21
-// (If your physical wiring uses custom SPI pins, adjust them here)
-#define NFC_SS_PIN    5     // RC522 SDA / SS Pin
-#define NFC_RST_PIN   21    // RC522 RST Pin
-#define NFC_SCK_PIN   18    // SPI Clock (SCK)
-#define NFC_MISO_PIN  19    // SPI Master-In-Slave-Out (MISO)
-#define NFC_MOSI_PIN  23    // SPI Master-Out-Slave-In (MOSI)
+// ---------- MFRC522 NFC / RFID CARD READER PINS (Your Exact Wiring) ----------
+#define NFC_SS_PIN    5     // RC522 SDA / SS -> D5 (GPIO 5)
+#define NFC_RST_PIN   2     // RC522 RST      -> D2 (GPIO 2)
+#define NFC_SCK_PIN   15    // RC522 SCK      -> D15 (GPIO 15)
+#define NFC_MISO_PIN  16    // RC522 MISO     -> RX2 (GPIO 16)
+#define NFC_MOSI_PIN  17    // RC522 MOSI     -> TX2 (GPIO 17)
 
 // ---------- 21 PRE-LOADED VIP SUMMIT NFC CARDS (IDs 1 .. 21) ----------
 struct VIPCard {
