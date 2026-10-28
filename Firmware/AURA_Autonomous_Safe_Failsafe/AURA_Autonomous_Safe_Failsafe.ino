@@ -10,16 +10,19 @@
  *   - Ultrasonics:       Front (TRIG=19, ECHO=35) | Rear (TRIG=18, ECHO=34)
  *   - MFRC522 RC522:     SDA=5, RST=2, SCK=15, MISO=16, MOSI=17
  * 
- * Continuous Serial Telemetry (Every 350ms):
- *   Prints: [SENSORS] Front US, Rear US, IR [L C R], NFC Status, State, and Active VIP Name
+ * Live Telemetry in Serial Monitor (Every 300ms):
+ *   [SENSORS] Front US | Back US | IR [L C R] | NFC Status | State | Active VIP
  * 
- * Autonomous Mission Cycle (Multi-Guest 15+ VIPs Rotation):
- *   1. [IDLE] Robot waits at startpoint for VIP NFC card tap.
- *   2. [TAP] Guest scans card -> Welcome message -> Spin 90° to align with black tape.
- *   3. [OUTBOUND] Follows black tape smoothly with front/rear ultrasonic safety (<15cm).
- *   4. [ENDPOINT] Reaches end of tape -> Pauses 2s -> Spins 180° to face back.
+ * Smart IR Line-Lock Mission Cycle:
+ *   1. [IDLE] Waits for VIP card tap while streaming ALL sensors live.
+ *   2. [NFC TAP] Reads VIP Card -> CHECKS IR SENSORS FIRST:
+ *      - If ALREADY ON TAPE (C or L or R): Begins following line IMMEDIATELY! (No spin).
+ *      - If OFF TAPE (!L && !C && !R): Spins 90° WHILE MONITORING IR -> Locks onto line
+ *        the millisecond center IR catches the black tape!
+ *   3. [OUTBOUND] Follows black line using exact compound logic + Front/Rear safety.
+ *   4. [ENDPOINT] Tape ends -> Pauses 2s -> Spins 180° until line is re-acquired.
  *   5. [RETURN] Follows line back to startpoint -> When tape ends, stops cleanly.
- *   6. [STANDBY] Returns to IDLE ready for the next guest to begin a new cycle!
+ *   6. [STANDBY] Cycles back to IDLE ready for next guest!
  * ======================================================================================
  */
 
@@ -35,7 +38,7 @@
 #define IR_L 32
 #define IR_C 23
 #define IR_R 22
-#define ON_LINE LOW  // LOW when sensor detects black line
+#define ON_LINE LOW  // LOW when TCRT5000 detects black line
 
 // L298N Dual Motor Driver Pins
 #define L_IN1 14
@@ -60,17 +63,17 @@
 #define NFC_MOSI_PIN  17    // RC522 MOSI     -> TX2 (GPIO 17)
 
 // ======================================================================================
-// 2. SPEED & TIME CALIBRATIONS (Tweak here if needed)
+// 2. SPEED & TIME CALIBRATIONS
 // ======================================================================================
-#define SPEED_CRUISE       165   // Cruising forward line speed (0-255)
+#define SPEED_CRUISE       165   // Forward line following speed (0-255)
 #define SPEED_TURN         195   // Turn steering speed for curves (0-255)
 #define SPEED_SPIN         200   // Turn-in-place spin speed (0-255)
 
-#define TIME_SPIN_90       1050  // ms to spin 90 degrees to align with line
-#define TIME_SPIN_180      2100  // ms to spin 180 degrees at endpoint to turn around
+#define TIME_SPIN_90       1200  // Maximum timeout (ms) to find tape when spinning 90°
+#define TIME_SPIN_180      2200  // Maximum timeout (ms) to turn around at endpoint
 #define OBSTACLE_DISTANCE  15    // Stop distance threshold (cm)
 #define LINE_LOST_MS       450   // ms without tape before declaring endpoint reached
-#define TELEMETRY_INTERVAL 350   // ms between serial telemetry prints
+#define TELEMETRY_INTERVAL 300   // ms between continuous serial telemetry prints
 
 // ======================================================================================
 // 3. REGISTERED VIP GUEST CARDS TABLE (Sheet2 + Official Replacements)
@@ -95,7 +98,7 @@ const VIPCard VIP_CARDS[] = {
     {"53CA0572420001", "Mohamed Gouda", 11},
     {"53BB0572420001", "Mohamed Adel", 12},
     {"53D00572420001", "Ahmed Abd El-Malek", 13},
-    // Fallback entries for additional/unassigned cards in pack
+    // Fallback entries for remaining cards
     {"53B80572420001", "VIP Guest 14", 14},
     {"53B90572420001", "VIP Guest 15", 15},
     {"53BA0572420001", "VIP Guest 16", 16},
@@ -126,7 +129,7 @@ String normalizeUid(const String& raw) {
 // ======================================================================================
 enum EscortState {
     STATE_IDLE,              // Waiting for guest to tap card
-    STATE_SPIN_90,           // Turning 90 degrees to face black tape
+    STATE_SPIN_90,           // Turning to find and lock onto black tape
     STATE_ESCORT_OUTBOUND,   // Following black tape toward endpoint
     STATE_ENDPOINT_PAUSE,    // Arrived at endpoint: pause before returning
     STATE_SPIN_180,          // Turning 180 degrees to face back
@@ -143,6 +146,7 @@ bool lineLostActive = false;
 int activeGuestId = 0;
 String activeGuestName = "NONE";
 
+// Using int signature to prevent Arduino IDE preprocessor forward declaration bugs
 const char* stateStr(int s) {
     switch (s) {
         case STATE_IDLE:            return "IDLE";
@@ -204,12 +208,12 @@ int distanceCM(int trigPin, int echoPin) {
     delayMicroseconds(10);
     digitalWrite(trigPin, LOW);
 
-    unsigned long duration = pulseIn(echoPin, HIGH, 18000); // 18ms timeout ~3 meters
+    unsigned long duration = pulseIn(echoPin, HIGH, 20000); // 20ms timeout (~3.4m)
     if (duration == 0) return 999;
-    return duration / 58;
+    int cm = duration / 58;
+    return (cm <= 0) ? 999 : cm;
 }
 
-// Backward-compatibility alias
 int readDistanceCM(int trigPin, int echoPin) {
     return distanceCM(trigPin, echoPin);
 }
@@ -219,12 +223,12 @@ int readDistanceCM(int trigPin, int echoPin) {
 // ======================================================================================
 // Returns true while line is active; returns false when tape is lost (endpoint)
 bool stepLineFollowing() {
-    // 1. Front Obstacle Safety Check
+    // 1. Front Obstacle Safety Check (< 15 cm)
     int frontDist = distanceCM(F_TRIG, F_ECHO);
     if (frontDist < OBSTACLE_DISTANCE) {
         stopMotors();
         Serial.printf("[FRONT SAFETY] Obstacle ahead (%d cm < %d cm)! Paused...\n", frontDist, OBSTACLE_DISTANCE);
-        return true; // Still on line, waiting for obstacle to clear
+        return true; // Paused safely, mission resumes when cleared
     }
 
     // 2. Read 3-Channel TCRT5000 IR Line Sensors (ON_LINE = LOW on black tape)
@@ -232,7 +236,7 @@ bool stepLineFollowing() {
     bool C = (digitalRead(IR_C) == ON_LINE);
     bool R = (digitalRead(IR_R) == ON_LINE);
 
-    // 3. User-Specified Compound Line Tracking & Rear Safety Logic
+    // 3. Exact User Compound Line Tracking & Rear Safety Logic
     if (!L && C && !R) {
         // Line centered directly under center sensor -> cruise forward
         setMotors(SPEED_CRUISE, SPEED_CRUISE);
@@ -336,7 +340,7 @@ bool checkNfcTap() {
 }
 
 // ======================================================================================
-// 9. CONTINUOUS SENSOR & NFC TELEMETRY
+// 9. CONTINUOUS SENSOR & NFC TELEMETRY (SERIAL MONITOR)
 // ======================================================================================
 void printSensorTelemetry() {
     int fDist = distanceCM(F_TRIG, F_ECHO);
@@ -349,9 +353,13 @@ void printSensorTelemetry() {
     byte v = rfid.PCD_ReadRegister(MFRC522::VersionReg);
     const char* nfcStatus = (v == 0x00 || v == 0xFF) ? "OFFLINE" : "READY";
 
-    Serial.printf("[SENSORS] F_US: %3d cm | B_US: %3d cm | IR: [L:%d C:%d R:%d] | NFC: %-7s | State: %-14s | VIP: %s\n",
+    // Unambiguous live telemetry stream of ALL sensors
+    Serial.printf("[SENSORS] Front: %3d cm | Back: %3d cm | IR: [L:%d C:%d R:%d] (%s-%s-%s) | NFC: %-7s | State: %-14s | VIP: %s\n",
                   fDist, bDist,
                   L ? 1 : 0, C ? 1 : 0, R ? 1 : 0,
+                  L ? "ON" : "OFF",
+                  C ? "ON" : "OFF",
+                  R ? "ON" : "OFF",
                   nfcStatus,
                   stateStr(currentState),
                   activeGuestName.c_str());
@@ -402,14 +410,16 @@ void setup() {
     rfid.PCD_SetAntennaGain(MFRC522::RxGain_max);
 
     byte nfcVer = rfid.PCD_ReadRegister(MFRC522::VersionReg);
-    Serial.printf("[NFC] RC522 Init (Version: 0x%02X) - Pins: SS=%d, RST=%d, SCK=%d, MISO=%d, MOSI=%d\n",
-                  nfcVer, NFC_SS_PIN, NFC_RST_PIN, NFC_SCK_PIN, NFC_MISO_PIN, NFC_MOSI_PIN);
 
-    if (nfcVer == 0x00 || nfcVer == 0xFF) {
-        Serial.println("[NFC WARNING] Reader communication failed! Check 3.3V power, GND, and wiring.");
-    } else {
-        Serial.println("[NFC READY] MFRC522 is listening for VIP cards (1-3 cm range)...");
-    }
+    // Initial Health Diagnostic Print of ALL Sensors
+    Serial.println("\n--- HARDWARE SENSOR HEALTH CHECK ---");
+    Serial.printf("  Front Ultrasonic (Trig %d, Echo %d) : %d cm\n", F_TRIG, F_ECHO, distanceCM(F_TRIG, F_ECHO));
+    Serial.printf("  Back Ultrasonic  (Trig %d, Echo %d) : %d cm\n", B_TRIG, B_ECHO, distanceCM(B_TRIG, B_ECHO));
+    Serial.printf("  IR Left   (Pin %d) : Raw=%d (%s)\n", IR_L, digitalRead(IR_L), (digitalRead(IR_L) == ON_LINE) ? "ON TAPE" : "OFF TAPE");
+    Serial.printf("  IR Center (Pin %d) : Raw=%d (%s)\n", IR_C, digitalRead(IR_C), (digitalRead(IR_C) == ON_LINE) ? "ON TAPE" : "OFF TAPE");
+    Serial.printf("  IR Right  (Pin %d) : Raw=%d (%s)\n", IR_R, digitalRead(IR_R), (digitalRead(IR_R) == ON_LINE) ? "ON TAPE" : "OFF TAPE");
+    Serial.printf("  NFC Reader (SDA %d): %s (Version: 0x%02X)\n", NFC_SS_PIN, (nfcVer == 0x00 || nfcVer == 0xFF) ? "FAIL/OFFLINE" : "READY", nfcVer);
+    Serial.println("------------------------------------\n");
 
     Serial.println("=======================================================");
     Serial.println("  SYSTEM READY — STANDBY FOR VIP CARD TAP");
@@ -424,7 +434,7 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
-    // 1. Continuous Live Serial Monitor Telemetry
+    // 1. Continuous Live Serial Monitor Telemetry (Every 300ms)
     if (now - lastTelemetryPrint >= TELEMETRY_INTERVAL) {
         lastTelemetryPrint = now;
         printSensorTelemetry();
@@ -437,25 +447,58 @@ void loop() {
         case STATE_IDLE: {
             if (checkNfcTap()) {
                 stopMotors();
-                delay(800); // 800ms greeting pause
-                stateStartTime = millis();
-                currentState = STATE_SPIN_90;
-                Serial.println("[STEP 1] Spinning 90° to align with black line...");
+                delay(600); // Brief greeting pause
+
+                // CHECK IR SENSORS FIRST!
+                bool L = (digitalRead(IR_L) == ON_LINE);
+                bool C = (digitalRead(IR_C) == ON_LINE);
+                bool R = (digitalRead(IR_R) == ON_LINE);
+
+                Serial.printf("\n[IR CHECK ON TAP] Sensors: Left=%d, Center=%d, Right=%d\n", L ? 1 : 0, C ? 1 : 0, R ? 1 : 0);
+
+                if (C || L || R) {
+                    // Robot is ALREADY sitting on the black line! Follow line directly without spinning!
+                    Serial.println("[START] Robot is already aligned on black tape! Following line directly...");
+                    currentState = STATE_ESCORT_OUTBOUND;
+                    lineLostActive = false;
+                } else {
+                    // Robot is off the line (facing guest). Spin to find the line!
+                    Serial.println("[START] Robot off tape -> Spinning 90° to find and lock onto black tape...");
+                    stateStartTime = millis();
+                    currentState = STATE_SPIN_90;
+                }
             }
             break;
         }
 
-        // ---------- 2. SPIN 90 DEGREES TO LINE ----------
+        // ---------- 2. SPIN 90 DEGREES TO LINE (SMART IR LOCK) ----------
         case STATE_SPIN_90: {
-            // Spin turn (Right motor backwards, Left motor forwards)
+            // Spin turn towards line
             setMotors(SPEED_SPIN, -SPEED_SPIN);
 
-            if (now - stateStartTime >= TIME_SPIN_90) {
+            // Check IR sensors while spinning:
+            bool C = (digitalRead(IR_C) == ON_LINE);
+            bool L = (digitalRead(IR_L) == ON_LINE);
+            bool R = (digitalRead(IR_R) == ON_LINE);
+
+            // After turning for at least 250ms (clears initial stationary contact),
+            // if ANY sensor catches black tape, STOP and start line following!
+            if ((now - stateStartTime > 250) && (C || L || R)) {
                 stopMotors();
-                delay(300); // Brief settling pause
+                delay(200);
+                Serial.println("[LINE LOCKED] IR sensor caught black tape! Following line to destination...");
                 currentState = STATE_ESCORT_OUTBOUND;
                 lineLostActive = false;
-                Serial.println("[STEP 2] Aligned! Following black line to endpoint...");
+                break;
+            }
+
+            // Safety timeout fallback
+            if (now - stateStartTime >= TIME_SPIN_90) {
+                stopMotors();
+                delay(200);
+                Serial.println("[TIMEOUT] 90° spin timeout reached. Attempting line following...");
+                currentState = STATE_ESCORT_OUTBOUND;
+                lineLostActive = false;
             }
             break;
         }
@@ -484,17 +527,31 @@ void loop() {
             break;
         }
 
-        // ---------- 5. SPIN 180 DEGREES TO RETURN ----------
+        // ---------- 5. SPIN 180 DEGREES TO RETURN (SMART IR LOCK) ----------
         case STATE_SPIN_180: {
-            // Spin turn 180 degrees
             setMotors(SPEED_SPIN, -SPEED_SPIN);
+
+            // Check IR sensors while spinning 180°:
+            bool C = (digitalRead(IR_C) == ON_LINE);
+            bool L = (digitalRead(IR_L) == ON_LINE);
+            bool R = (digitalRead(IR_R) == ON_LINE);
+
+            // After 1000ms of turning, as soon as tape is detected, lock onto line:
+            if ((now - stateStartTime > 1000) && (C || L || R)) {
+                stopMotors();
+                delay(200);
+                Serial.println("[LINE LOCKED] Tape detected after 180° spin! Returning to startpoint...");
+                currentState = STATE_ESCORT_RETURN;
+                lineLostActive = false;
+                break;
+            }
 
             if (now - stateStartTime >= TIME_SPIN_180) {
                 stopMotors();
-                delay(300); // Brief settling pause
+                delay(200);
+                Serial.println("[TIMEOUT] 180° spin timeout. Returning to startpoint...");
                 currentState = STATE_ESCORT_RETURN;
                 lineLostActive = false;
-                Serial.println("[STEP 5] Aligned! Returning along black line to startpoint...");
             }
             break;
         }
