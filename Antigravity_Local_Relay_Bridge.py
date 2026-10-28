@@ -236,7 +236,8 @@ def _build_contents(prompt: str, history: Optional[List[ChatTurn]], context: Opt
         ir_bits = str(esp32_state.get("ir", "---"))
         ir_spaced = " ".join(list(ir_bits))
         ir_desc = "Line Centered" if ir_bits == "010" else "Station Cross-Line Marker" if ir_bits == "111" else "Off Line" if ir_bits == "000" else f"Tracking [{ir_spaced}]"
-        hw_telemetry_str = f"Live Robot Sensors: Front Sonar: {front_cm}cm, Rear Sonar: {back_cm}cm, 3 IR Line Sensors [Left Center Right]: [{ir_spaced}] ({ir_desc}), Robot State: {esp32_state.get('robot_state', 'IDLE')}"
+        guest_name = esp32_state.get("guest", "NONE")
+        hw_telemetry_str = f"Live Robot Sensors: Front Sonar: {front_cm}cm, Rear Sonar: {back_cm}cm, 3 IR Line Sensors [Left Center Right]: [{ir_spaced}] ({ir_desc}), Robot State: {esp32_state.get('robot_state', 'IDLE')}, Active VIP Guest: {guest_name}"
 
     full_ctx = " | ".join(filter(None, [hw_telemetry_str, context]))
     user_text = prompt if not full_ctx else f"({full_ctx})\n{prompt}" 
