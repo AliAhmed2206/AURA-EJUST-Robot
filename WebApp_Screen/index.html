@@ -5044,6 +5044,7 @@ function onEsp32(raw) {
     const uid = (d.uid || 'UNKNOWN').toUpperCase();
     hwState.lastNfcUid = uid;
     hwState.lastNfcTime = Date.now();
+    if (hwState.state === 'ARRIVED') hwState.state = 'IDLE'; // Unlock from ARRIVED for next VIP guest
 
     // 1. Check if NFC Learn Mode is active (user tapped "Scan Next Card to Register")
     if (nfcLearnMode && uid !== 'READ_ERROR') {
@@ -5153,6 +5154,15 @@ function onEsp32(raw) {
     const t = ar ? 'وصلنا! استمتع بالجلسة.' : 'Here we are! Enjoy the session.';
     history.push({ role: 'user', text: `[Robot Arrived at Destination]` }, { role: 'model', text: t });
     speak(t, 'HAPPY', { holdAfter: 3500 });
+
+    // Multi-guest auto-reset: Return to IDLE after 6 seconds so AURA is ready for the next VIP guest!
+    setTimeout(() => {
+      if (hwState.state === 'ARRIVED') {
+        hwState.state = 'IDLE';
+        updateHwUi();
+        showNfcBanner(ar ? '✨ أورا جاهزة لاستقبال الضيف التالي' : '✨ AURA READY — WAITING FOR NEXT VIP GUEST', 'valid', 4000);
+      }
+    }, 6000);
     return;
   }
 }

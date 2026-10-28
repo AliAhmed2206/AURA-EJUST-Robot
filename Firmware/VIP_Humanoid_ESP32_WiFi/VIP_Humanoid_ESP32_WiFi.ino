@@ -370,6 +370,8 @@ unsigned long lastTelemetryTime = 0;
 
 
 unsigned long lastMarkerDebounce = 0;
+unsigned long arrivedTimestamp = 0;
+unsigned long escortStartTime = 0;
 
 
 
@@ -706,30 +708,13 @@ void runEscortStep() {
 
 
 
-            if (markersCount >= targetMarkers) {
-
-
-
+            if (markersCount >= targetMarkers && (now - escortStartTime > 2500)) {
                 stopRobot();
-
-
-
                 currentState = STATE_ARRIVED;
-
-
-
-                Serial.printf("[DESTINATION] Arrived at %s!\n", targetDestination.c_str());
-
-
-
+                arrivedTimestamp = now;
+                Serial.printf("[DESTINATION] Arrived at %s! (Auto-resetting to IDLE in 6s for next guest)\n", targetDestination.c_str());
                 postTelemetry("ARRIVED", ",\"dest\":\"" + targetDestination + "\"");
-
-
-
                 return;
-
-
-
             }
 
 
@@ -1640,13 +1625,12 @@ void checkNfcReader() {
         // Send live telemetry to Relay Bridge & Phone Screen over Wi-Fi
         postTelemetry("NFC_TAP", ",\"valid\":true,\"uid\":\"" + uidStr + "\",\"id\":" + String(guestId) + ",\"name\":\"VIP Guest " + String(guestId) + "\"");
 
-        // If in IDLE or ARRIVED, start autonomous escort
-        if (currentState == STATE_IDLE || currentState == STATE_ARRIVED) {
-            markersCount = 0;
-            delay(1000); // 1s greeting pause before rolling
-            currentState = STATE_ESCORTING;
-            Serial.println("[START] Autonomous Escort Initiated by VIP Card!\n");
-        }
+        // Always reset markers and start escort for this VIP guest (supports 15+ guests sequentially!)
+        markersCount = 0;
+        escortStartTime = millis();
+        delay(1000); // 1s greeting pause before rolling
+        currentState = STATE_ESCORTING;
+        Serial.printf("[START] Escorting VIP Guest %d — Ready for 15+ guest rotation!\n\n", guestId);
     } else {
         Serial.printf("[NFC INVALID] Unknown Card Code: %s\n", uidStr.c_str());
         postTelemetry("NFC_TAP", ",\"valid\":false,\"uid\":\"" + uidStr + "\",\"reason\":\"UNREGISTERED\"");
@@ -2026,17 +2010,18 @@ void loop() {
 
 
     // 5. Autonomous Mission Escort (HQ Door -> Theatre)
-
-
-
     if (currentState == STATE_ESCORTING && !manualDriveActive) {
-
-
-
         runEscortStep();
+    }
 
-
-
+    // 5b. Auto-Return to IDLE after Arrival (Multi-Guest Cycle: Ready for Next of the 15+ VIP Guests!)
+    if (currentState == STATE_ARRIVED) {
+        if (now - arrivedTimestamp >= 6000) {
+            currentState = STATE_IDLE;
+            markersCount = 0;
+            Serial.println("[GUEST CYCLE] Escort complete! AURA back in IDLE — Ready for Next VIP Guest!");
+            postTelemetry("STATUS", ",\"state\":\"IDLE\"");
+        }
     }
 
     // 6. NFC / RFID Card Reader Check
