@@ -38,9 +38,10 @@
 // ======================================================================================
 // 2. SETTINGS
 // ======================================================================================
-#define ON_LINE           HIGH // 1 on Black Tape, 0 on White Floor
+#define ON_LINE           LOW // 1 on Black Tape, 0 on White Floor
 #define SPEED             170
 #define TURN_SPEED        200
+#define TIME_SPIN_90      1000 // Milliseconds to spin 90 degrees (adjust for floor/battery)
 #define OBSTACLE_DISTANCE 15
 
 // ======================================================================================
@@ -303,8 +304,27 @@ void loop() {
   if (!robotRunning) {
     stopRobot();
     if (checkNfcTap()) {
-      Serial.println("[START] Card verified! Starting line follower in 800ms...");
-      delay(800); // Brief greeting pause
+      Serial.println("[START] Card verified! Delaying 2 seconds...");
+      stopRobot();
+      delay(2000); // 1. Immediate 2-second delay after scanning
+
+      Serial.println("[START] Turning 90 degrees...");
+      // 2. Turn 90 degrees (Clockwise. If you need counter-clockwise, use: -TURN_SPEED, TURN_SPEED)
+      unsigned long t0 = millis();
+      moveRobot(TURN_SPEED, -TURN_SPEED);
+      while (millis() - t0 < TIME_SPIN_90) {
+        // If center IR catches black tape during the turn, lock onto line immediately
+        if (millis() - t0 > 300 && digitalRead(IR_C) == ON_LINE) {
+          Serial.println("[LINE LOCKED] Center IR caught black tape during 90° turn!");
+          break;
+        }
+        delay(10);
+      }
+      stopRobot();
+      delay(200);
+
+      // 3. Normal line follower active until three IRs read 1s
+      Serial.println("[START] Normal line follower active until three IRs read 1s (L & C & R)...");
       robotRunning = true;
     }
     delay(10);
