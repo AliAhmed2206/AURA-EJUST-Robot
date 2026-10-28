@@ -161,7 +161,7 @@ int activeGuestId                  = 0;
 String activeGuestName             = "NONE";
 String activeCardUid               = "NONE";
 
-const char* stateStr(EscortState s) {
+const char* stateStr(int s) {
     switch (s) {
         case STATE_IDLE:            return "IDLE";
         case STATE_SPIN_90:         return "TURNING_90";

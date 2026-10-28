@@ -143,7 +143,7 @@ bool lineLostActive = false;
 int activeGuestId = 0;
 String activeGuestName = "NONE";
 
-const char* stateStr(EscortState s) {
+const char* stateStr(int s) {
     switch (s) {
         case STATE_IDLE:            return "IDLE";
         case STATE_SPIN_90:         return "SPIN_90";
