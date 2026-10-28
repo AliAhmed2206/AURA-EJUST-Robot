@@ -64,6 +64,39 @@
     display: inline-flex; align-items: center; gap: 5px; }
   #emergencyBtn:hover { background: #ff1744; color: #ffffff; box-shadow: 0 0 24px rgba(255,23,68,.85); transform: scale(1.03); }
   #emergencyBtn.active { background: #ff1744; color: #ffffff; animation: pulseAlert 0.7s infinite alternate; }
+
+  /* Mobile Responsive TopBar & Badges */
+  @media (max-width: 768px) {
+    #topBar {
+      top: 8px !important; left: 8px !important; right: 8px !important;
+      flex-wrap: wrap !important;
+      gap: 6px !important;
+      justify-content: flex-start !important;
+    }
+    #topBar > .spacer {
+      display: none !important;
+    }
+    #bleBadge, #langBadge, #micBadge, #guestModeBtn, #emergencyBtn, #camBtn, #settingsBtn, #chatToggleBtn {
+      padding: 5px 10px !important;
+      font-size: 10px !important;
+      letter-spacing: .02em !important;
+    }
+    #micBadge {
+      max-width: none !important;
+      flex-shrink: 0 !important;
+    }
+    #caption {
+      bottom: 58px !important;
+      max-width: 88vw !important;
+      font-size: 13px !important;
+    }
+    #chatFloatingPill {
+      bottom: 10px !important;
+      right: 10px !important;
+      padding: 6px 12px !important;
+      font-size: 10px !important;
+    }
+  }
   @keyframes pulseAlert { from { box-shadow: 0 0 15px #ff1744; } to { box-shadow: 0 0 30px #ff5252; } }
 
   #guestModeBtn { padding: 6px 14px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: .08em;
@@ -803,7 +836,7 @@
   <div id="bleBadge" title="Tap to pair ESP32 over Bluetooth">● BLE: TAP TO PAIR</div>
   <div id="langBadge" title="Tap to switch Language (English / العربية)">🌐 EN</div>
   <div id="micBadge" title="Microphone Status (Tap to unblock/allow)">🎙️ LISTENING</div>
-  <div style="flex:1"></div>
+  <div class="spacer" style="flex:1"></div>
   <button id="guestModeBtn" title="Clean Face & Captions Only (Exhibition Mode for Guests)">🎭 GUEST MODE</button>
   <button id="emergencyBtn" title="EMERGENCY STOP / SWITCH TO AUTONOMOUS FAILSAFE">🛑 EMERGENCY OVERRIDE</button>
   <button id="chatToggleBtn" title="Toggle Command & Chat Bar (Hide / Show)">💬 CHAT</button>
@@ -814,6 +847,40 @@
 <div id="wake">TAP ANYWHERE TO WAKE AURA ⚡</div>
 <div id="caption"></div>
 <div id="notice"></div>
+
+<!-- Mobile Microphone Help & Permission Assistant Modal -->
+<div id="micHelpModal" style="display:none; position:fixed; inset:0; background:rgba(5,3,10,.88); backdrop-filter:blur(10px); z-index:9999; align-items:center; justify-content:center; padding:16px;">
+  <div style="background:#0e091b; border:1.5px solid #00e5ff; border-radius:18px; max-width:440px; width:100%; padding:22px; color:#e6f4ff; box-shadow:0 0 35px rgba(0,229,255,.3);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="margin:0; font-size:16px; color:#00e5ff; display:flex; align-items:center; gap:8px;">🎙️ Enable Microphone on Phone</h3>
+      <button id="closeMicModalX" style="background:transparent; border:none; color:#888; font-size:18px; cursor:pointer;">✕</button>
+    </div>
+    <p style="font-size:12px; color:#9aa7c7; margin:0 0 14px; line-height:1.5;">
+      Android Chrome blocks microphones on local Wi-Fi IP links (HTTP). Choose either method below to enable speech in seconds:
+    </p>
+    
+    <div style="background:#150f28; border:1px solid #00e676; border-radius:12px; padding:12px; margin-bottom:12px;">
+      <div style="font-size:12px; font-weight:700; color:#69f0ae; margin-bottom:4px;">✨ Method 1: Open Secure HTTPS (Fastest)</div>
+      <p style="font-size:11px; color:#cfedff; margin:0 0 8px;">Tap below to open the secure HTTPS version where Chrome directly displays the "Allow Microphone" popup:</p>
+      <a id="httpsLinkBtn" href="https://10.40.14.178:8443" style="display:block; text-align:center; padding:9px 12px; background:#00e676; color:#05030a; font-weight:800; font-size:12px; border-radius:8px; text-decoration:none; margin-bottom:6px;">OPEN HTTPS (PORT 8443) 🚀</a>
+      <span style="font-size:10px; color:#9bb;">(If Chrome says "Connection not private", tap <em>Advanced → Proceed</em>, then tap <strong>Allow</strong> for mic!)</span>
+    </div>
+
+    <div style="background:#150f28; border:1px solid #7c4dff; border-radius:12px; padding:12px; margin-bottom:16px;">
+      <div style="font-size:12px; font-weight:700; color:#b388ff; margin-bottom:4px;">⚙️ Method 2: Enable Chrome Flag</div>
+      <p style="font-size:11px; color:#cfedff; margin:0 0 6px; line-height:1.4;">
+        1. Open Chrome tab: <code style="color:#00e5ff">chrome://flags/#unsafely-treat-insecure-origin-as-secure</code><br>
+        2. Set to <strong>Enabled</strong> and add: <code style="color:#00e5ff" id="flagOriginCode">http://10.40.14.178:8080</code><br>
+        3. Tap <strong>Relaunch</strong>.
+      </p>
+    </div>
+
+    <div style="display:flex; gap:10px;">
+      <button id="testMicBtn" style="flex:1; padding:9px 12px; border-radius:10px; background:#00e5ff; color:#05030a; font-weight:700; font-size:12px; border:none; cursor:pointer;">TEST MIC NOW</button>
+      <button id="closeMicModalBtn" style="padding:9px 16px; border-radius:10px; background:#221838; color:#cfedff; font-size:12px; border:1px solid #3d2c5e; cursor:pointer;">DISMISS</button>
+    </div>
+  </div>
+</div>
 
 <!-- Floating Draggable Bottom Command & Chat Bar (Optional / Movable) -->
 <div id="chatBar" style="display:none;">
@@ -858,7 +925,7 @@
   <div class="cam-top-bar">
     <div class="hud-pill live-pill">● LIVE</div>
     <div class="hud-pill" id="camTargetInfo">TARGET: SCANNING</div>
-    <div style="flex:1"></div>
+    <div class="spacer" style="flex:1"></div>
     <button class="hud-btn" id="camModeBtn" title="Toggle Corner card / Fullscreen">🗗 CORNER</button>
     <button class="hud-btn" id="camFlipBtn" title="Flip Front / Rear Lens">🔄 FLIP</button>
     <button class="hud-btn hud-exit" id="camCloseBtn" title="Close Camera Feed">✕ CLOSE</button>
@@ -3769,7 +3836,7 @@ function updateMicBadge(state, detail = '') {
   b.className = '';
   if (state === 'blocked') {
     b.classList.add('blocked');
-    b.textContent = '⚠️ MIC BLOCKED (TAP TO ALLOW)';
+    b.textContent = '🎙️⚠️ UNBLOCK MIC';
   } else if (state === 'hearing') {
     b.classList.add('hearing');
     b.textContent = detail ? `👂 ${detail}` : '👂 HEARING...';
@@ -5262,7 +5329,45 @@ $('langBadge').onclick = (e) => {
   }
 };
 
+function showMicHelp() {
+  const m = $('micHelpModal');
+  if (!m) return;
+  const httpsBtn = $('httpsLinkBtn');
+  if (httpsBtn) {
+    const host = location.hostname || '10.40.14.178';
+    httpsBtn.href = `https://${host}:8443`;
+    httpsBtn.textContent = `OPEN HTTPS (${host}:8443) 🚀`;
+  }
+  const flagCode = $('flagOriginCode');
+  if (flagCode) {
+    flagCode.textContent = `http://${location.hostname || '10.40.14.178'}:8080`;
+  }
+  m.style.display = 'flex';
+}
+window.showMicHelp = showMicHelp;
+
+if ($('closeMicModalX')) $('closeMicModalX').onclick = () => { $('micHelpModal').style.display = 'none'; };
+if ($('closeMicModalBtn')) $('closeMicModalBtn').onclick = () => { $('micHelpModal').style.display = 'none'; };
+if ($('testMicBtn')) $('testMicBtn').onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+    initRecognition();
+    startRec();
+    updateMicBadge('listening');
+    $('micHelpModal').style.display = 'none';
+    notice('🎙️ Microphone enabled successfully!', 2500);
+  } catch (err) {
+    alert('Microphone still blocked by Chrome. Please click the green "OPEN HTTPS (PORT 8443)" button above to grant permission!');
+  }
+};
+
 $('micBadge').onclick = async (e) => {
+  e.stopPropagation();
+  if ($('micBadge').classList.contains('blocked')) {
+    showMicHelp();
+    return;
+  }
   e.stopPropagation();
   ensureAudio();
   awake = true;

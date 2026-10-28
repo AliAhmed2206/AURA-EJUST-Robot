@@ -823,20 +823,94 @@ if os.path.exists(WEB_APP_DIR):
     app.mount("/", StaticFiles(directory=WEB_APP_DIR, html=True), name="static")
     print(f"[*] Mounted WebApp static screen from: {WEB_APP_DIR}")
 
+
+def get_or_create_ssl_cert():
+    """Generates local self-signed SSL cert for HTTPS access so Android Chrome allows microphone natively."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    c_path = os.path.join(base_dir, "cert.pem")
+    k_path = os.path.join(base_dir, "key.pem")
+    if os.path.exists(c_path) and os.path.exists(k_path):
+        return c_path, k_path
+    try:
+        import datetime, ipaddress
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.hazmat.primitives import serialization
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COMMON_NAME, LOCAL_IP),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "AURA Humanoid Robot"),
+        ])
+        san_list = [
+            x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+            x509.DNSName("localhost"),
+            x509.DNSName("ali-mohamed.local"),
+        ]
+        try:
+            san_list.append(x509.IPAddress(ipaddress.IPv4Address(LOCAL_IP)))
+        except Exception:
+            pass
+
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(issuer)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1))
+            .not_valid_after(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365))
+            .add_extension(x509.SubjectAlternativeName(san_list), critical=False)
+            .sign(key, hashes.SHA256())
+        )
+        with open(k_path, "wb") as f:
+            f.write(key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption()
+            ))
+        with open(c_path, "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
+        print(f"[*] Generated Self-Signed SSL Certificate: {c_path}")
+        return c_path, k_path
+    except Exception as e:
+        print(f"[!] SSL generation notice: {e}")
+        return None, None
+
 def start():
+    cert_file, key_file = get_or_create_ssl_cert()
+    
     print("=" * 72)
-    print("   ANTIGRAVITY LOCAL RELAY BRIDGE — ACTIVE")
+    print("   ANTIGRAVITY LOCAL RELAY BRIDGE — ACTIVE (HTTP & HTTPS)")
     print("=" * 72)
-    print(f"  PC Gateway Address:       http://{LOCAL_IP}:8080")
+    print(f"  HTTP Port (ESP32 & Web):  http://{LOCAL_IP}:8080")
+    if cert_file and key_file:
+        print(f"  HTTPS Port (Phone Mic):   https://{LOCAL_IP}:8443")
     print(f"  Local Machine Address:    http://localhost:8080")
     print(f"  Active Google Account:    ali.mohamed.220906@gmail.com")
     print(f"  GCP Project ID:           {PROJECT_ID}")
     print(f"  Antigravity Model:        {MODEL_NAME} (Zero-Quota / Unlimited)")
     print("=" * 72)
-    print(f"  --> On Galaxy A24 phone, open Chrome and navigate to:")
-    print(f"      http://{LOCAL_IP}:8080")
+    print(f"  --> On Galaxy A24 phone (for instant Mic permission):")
+    if cert_file and key_file:
+        print(f"      https://{LOCAL_IP}:8443")
+    else:
+        print(f"      http://{LOCAL_IP}:8080")
     print("=" * 72)
-    
+
+    if cert_file and key_file:
+        import threading
+        def run_https():
+            try:
+                uvicorn.run(app, host="0.0.0.0", port=8443, ssl_certfile=cert_file, ssl_keyfile=key_file, log_level="warning")
+            except Exception as e:
+                print(f"[HTTPS SERVER ERROR] {e}")
+        t = threading.Thread(target=run_https, daemon=True)
+        t.start()
+        print("[*] Dual HTTPS server running on https://0.0.0.0:8443")
+
     uvicorn.run(app, host="0.0.0.0", port=8080, log_level="info")
 
 if __name__ == "__main__":
