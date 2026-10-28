@@ -46,9 +46,9 @@
 
 // ---------- OBSTACLE AVOIDANCE TUNING (DETOUR) ----------
 #define AVOID_TURN_TIME   700  // Time (ms) to turn away / towards the line (~80-90°)
-#define AVOID_SIDE_TIME   900  // Time (ms) to drive sideways away from obstacle
+#define AVOID_SIDE_TIME   1000 // Time (ms) to drive sideways away from obstacle (extra margin for wide columns)
 #define AVOID_PASS_TIME   1200 // Time (ms) to drive forward past the obstacle
-#define AVOID_TIMEOUT     4000 // Max search time (ms) to reacquire the line
+#define AVOID_TIMEOUT     4500 // Max search time (ms) to reacquire the line
 
 // ======================================================================================
 // 3. REGISTERED VIP GUEST CARDS TABLE (Sheet2 + Official Replacements)
@@ -288,12 +288,59 @@ void avoidObstacle() {
   stopRobot();
   delay(150);
 
-  // 5. Turn Left toward the line to intercept it
-  Serial.println("[AVOID 5/5] Turning left toward black line...");
-  moveRobot(-TURN_SPEED, TURN_SPEED);
-  delay(AVOID_TURN_TIME);
-  stopRobot();
-  delay(150);
+  // 5. Turn Left to check if column/obstacle is cleared (Adaptive Leap-Frog for Big Columns)
+  const int MAX_COLUMN_EXTENSIONS = 4; // Up to 4 step extensions for huge pillars
+  int extensions = 0;
+  bool columnCleared = false;
+
+  while (extensions <= MAX_COLUMN_EXTENSIONS) {
+    Serial.printf("[AVOID 5/5] Turning left toward black line (Check %d)...\n", extensions + 1);
+    moveRobot(-TURN_SPEED, TURN_SPEED);
+    delay(AVOID_TURN_TIME);
+    stopRobot();
+    delay(200);
+
+    // Check front distance: Is the column still blocking the path back?
+    int returnDist = distanceCM(F_TRIG, F_ECHO);
+    if (returnDist > 25) {
+      // Clear path back to the line!
+      Serial.printf("[COLUMN CLEARED] Path back to line is clear (%d cm)!\n", returnDist);
+      columnCleared = true;
+      break;
+    }
+
+    // Column flank still blocking the turn!
+    extensions++;
+    if (extensions > MAX_COLUMN_EXTENSIONS) {
+      Serial.printf("\n[WALL / COLUMN TOO LARGE] Blocked at %d cm after %d extensions! Safety halt.\n", returnDist, MAX_COLUMN_EXTENSIONS);
+      stopRobot();
+      robotRunning = false;
+      return;
+    }
+
+    Serial.printf("[BIG COLUMN DETECTED] Front blocked by column flank at %d cm. Stepping further forward...\n", returnDist);
+    // Turn back Right to face parallel to the line
+    moveRobot(TURN_SPEED, -TURN_SPEED);
+    delay(AVOID_TURN_TIME);
+    stopRobot();
+    delay(150);
+
+    // Step forward another 600ms along the column side
+    Serial.println("[COLUMN EXTENSION] Driving forward alongside column (+600ms)...");
+    unsigned long extStart = millis();
+    moveRobot(SPEED, SPEED);
+    while (millis() - extStart < 600) {
+      if (distanceCM(F_TRIG, F_ECHO) < OBSTACLE_DISTANCE) {
+        Serial.println("\n[WALL DETECTED] Blocked ahead during column extension! Safety halt.");
+        stopRobot();
+        robotRunning = false;
+        return;
+      }
+      delay(10);
+    }
+    stopRobot();
+    delay(150);
+  }
 
   // 6. Move forward until IR sensors intercept the black line
   Serial.println("[AVOID 6/5] Searching forward for black tape...");
