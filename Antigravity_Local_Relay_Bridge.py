@@ -93,21 +93,31 @@ THE HALL RULE (very important)
 
 PHYSICAL ROBOT ACTIONS & MOTOR CONTROL (Wi-Fi ESP32 Hardware)
 - You have complete active motor control over your physical robot chassis with customizable durations (from 1 second up to 2 minutes)!
-- If the guest asks you to move, drive, turn, test wheels, or spin for ANY duration (e.g. 5 seconds, 10 seconds, 1 minute, 30 seconds):
-  - ALWAYS confirm enthusiastically that you are executing it for that exact duration! (e.g. "Moving forward for 10 seconds!", "حاضر، هتحرك لقدام لمدة 10 ثواني!", "Turning on the right wheel for 5 seconds!")
-  - NEVER say or imply that you cannot move for a specific time or duration. You CAN move for any requested duration!
-  - Include the action tag with the duration in milliseconds, or standard tag:
-    - [ACTION: FORWARD:5000] (or 10000, 60000, etc.)
-    - [ACTION: BACKWARD:5000]
-    - [ACTION: LEFT:5000]
-    - [ACTION: RIGHT:5000]
-    - [ACTION: RIGHT_WHEEL:5000]
-    - [ACTION: LEFT_WHEEL:5000]
+- ROBOT SPEED & SPATIAL CALIBRATION:
+  - 1 meter forward or backward ≈ 2000 ms (2 seconds).
+  - 50 cm ≈ 1000 ms.
+  - 90-degree turn (left or right) ≈ 1200 ms.
+  - 180-degree turn around ≈ 2200 ms.
+  - 360-degree full spin ≈ 4400 ms.
+- NATURAL LANGUAGE NAVIGATION & MULTI-STEP REASONING:
+  - You understand ANY natural language movement request in English or Arabic (e.g. "move 2 m fwd then 1m right then 1 m left", "امشي مترين قدام بعدين ادخلي يمين متر", "advance 3 steps, turn around, and wave").
+  - When asked for spatial or multi-step navigation:
+    1. Reason about the trajectory steps carefully.
+    2. If a step turns into a direction and moves forward (e.g. "1m right" or "ادخلي يمين متر"), output the turn tag first (e.g. [ACTION: RIGHT:1200]) followed by the forward motion for that distance (e.g. [ACTION: FORWARD:2000]).
+    3. Chain all resulting action tags with exact millisecond timings:
+       Example for "move 2 m fwd then 1m right then 1 m left":
+       [ACTION: FORWARD:4000] [ACTION: RIGHT:1200] [ACTION: FORWARD:2000] [ACTION: LEFT:1200] [ACTION: FORWARD:2000]
+    4. Confirm the execution enthusiastically and naturally in 1 short spoken sentence.
+  - Available action commands:
+    - [ACTION: FORWARD:ms] (e.g. FORWARD:4000 for 2m, FORWARD:2000 for 1m)
+    - [ACTION: BACKWARD:ms]
+    - [ACTION: LEFT:ms] (e.g. LEFT:1200 for 90 deg turn)
+    - [ACTION: RIGHT:ms] (e.g. RIGHT:1200 for 90 deg turn)
+    - [ACTION: RIGHT_WHEEL:ms]
+    - [ACTION: LEFT_WHEEL:ms]
     - [ACTION: STOP]
     - [ACTION: WAVE]
     - [ACTION: ESCORT]
-- If asked for multi-step / complex tasks (e.g. 'turn left then right', 'move forward for 3 seconds then turn left', 'dance'):
-  - Confirm the sequence excitedly and chain multiple action tags: [ACTION: LEFT:1200] [ACTION: RIGHT:1200]
 Only add action tags when the guest explicitly asks for physical robot movement or greeting gestures.
 
 ROBOT SENSORS & TELEMETRY
@@ -190,6 +200,7 @@ class ChatResponse(BaseModel):
     model: str
     provider: str = "antigravity_pro_session"
     action: Optional[str] = None
+    actions: Optional[List[str]] = None
     clauses: Optional[List[str]] = None
     first_audio_b64: Optional[str] = None
 
@@ -203,9 +214,13 @@ def extract_emotion_and_clean(reply_text: str) -> tuple[str, str]:
     cleaned = re.sub(r"[*_#`]+", "", cleaned).strip()
     return cleaned, emotion
 
+def extract_actions(reply_text: str) -> List[str]:
+    matches = re.findall(r"\[ACTION:\s*([A-Z0-9_:]+)\]", reply_text, re.IGNORECASE)
+    return [m.strip().upper() for m in matches]
+
 def extract_action(reply_text: str) -> Optional[str]:
-    m = re.search(r"\[ACTION:\s*([A-Z_]+)\]", reply_text, re.IGNORECASE)
-    return m.group(1).upper() if m else None
+    actions = extract_actions(reply_text)
+    return actions[0] if actions else None
 
 def _build_contents(prompt: str, history: Optional[List[ChatTurn]], context: Optional[str], image_b64: Optional[str] = None):
     contents = []
@@ -255,7 +270,7 @@ def generate_via_antigravity(prompt: str, system_instr: Optional[str] = None) ->
         model=MODEL_NAME, contents=_build_contents(prompt, None, None), config=_config(system_instr))
     return extract_emotion_and_clean(response.text or "")
 
-async def generate_async(prompt: str, history, context, system_instr, image_b64: Optional[str] = None) -> tuple[str, str, Optional[str]]:
+async def generate_async(prompt: str, history, context, system_instr, image_b64: Optional[str] = None) -> tuple[str, str, Optional[str], List[str]]:
     """Non-blocking call so TTS requests are never stuck behind chat requests."""
     global client
     if client is None:
@@ -264,7 +279,9 @@ async def generate_async(prompt: str, history, context, system_instr, image_b64:
         model=MODEL_NAME, contents=_build_contents(prompt, history, context, image_b64), config=_config(system_instr))
     raw = response.text or ""
     text, emo = extract_emotion_and_clean(raw)
-    return text, emo, extract_action(raw)
+    actions = extract_actions(raw)
+    action = actions[0] if actions else None
+    return text, emo, action, actions
 
 # 1. Health & Status Endpoint
 @app.get("/api/health")
@@ -524,9 +541,9 @@ async def api_chat(req: ChatRequest):
         raise HTTPException(status_code=400, detail="Empty prompt provided")
     
     try:
-        reply, emotion, action = await generate_async(req.prompt, req.history, req.context, req.system_instruction, req.image_b64)
+        reply, emotion, action, actions = await generate_async(req.prompt, req.history, req.context, req.system_instruction, req.image_b64)
         try:
-            print(f"[CHAT] Guest (cam={'YES' if req.image_b64 else 'NO'}): {req.prompt!r} -> AURA ({emotion}): {reply!r}")
+            print(f"[CHAT] Guest (cam={'YES' if req.image_b64 else 'NO'}): {req.prompt!r} -> AURA ({emotion}): {reply!r} | Actions: {actions}")
         except Exception:
             pass
         clauses = split_clauses(reply)
@@ -546,6 +563,7 @@ async def api_chat(req: ChatRequest):
             model=MODEL_NAME,
             provider="antigravity_pro_session",
             action=action,
+            actions=actions,
             clauses=clauses,
             first_audio_b64=first_audio_b64,
         )
