@@ -38,7 +38,7 @@
 #define IR_L 32
 #define IR_C 23
 #define IR_R 22
-#define ON_LINE LOW  // LOW when TCRT5000 detects black line
+#define ON_LINE HIGH // HIGH (1) when TCRT5000 detects black line
 
 // L298N Dual Motor Driver Pins
 #define L_IN1 14
