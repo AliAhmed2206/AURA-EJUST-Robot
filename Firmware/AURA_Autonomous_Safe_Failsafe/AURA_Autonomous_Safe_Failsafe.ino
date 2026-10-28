@@ -5,21 +5,23 @@
  * 100% STANDALONE EMERGENCY & BACKUP FIRMWARE - ZERO WI-FI / ZERO AI DEPENDENCY
  * 
  * Hardware Pinout (Exact Match to Physical Robot Wiring):
- *   - IR Line Tracking:  IR_L=32, IR_C=23, IR_R=22 (LOW = On Black Tape)
+ *   - IR Line Tracking:  IR_L=32, IR_C=23, IR_R=22
+ *                        (ON_LINE = LOW: LED is ON when detecting line, OFF when off tape)
  *   - L298N Motors:      L_IN1=14, L_IN2=27, L_EN=25 | R_IN1=26, R_IN2=33, R_EN=13
  *   - Ultrasonics:       Front (TRIG=19, ECHO=35) | Rear (TRIG=18, ECHO=34)
  *   - MFRC522 RC522:     SDA=5, RST=2, SCK=15, MISO=16, MOSI=17
  * 
- * Live Telemetry in Serial Monitor (Every 300ms):
- *   [SENSORS] Front US | Back US | IR [L C R] | NFC Status | State | Active VIP
+ * Dual Ultrasonic Safety:
+ *   - Front obstacle (< 15cm) -> Immediate Emergency Stop
+ *   - Rear obstacle (< 15cm)  -> Immediate Emergency Stop
  * 
  * Smart IR Line-Lock Mission Cycle:
- *   1. [IDLE] Waits for VIP card tap while streaming ALL sensors live.
- *   2. [NFC TAP] Reads VIP Card -> CHECKS IR SENSORS FIRST:
- *      - If ALREADY ON TAPE (C or L or R): Begins following line IMMEDIATELY! (No spin).
+ *   1. [IDLE] Waits for VIP card tap while streaming ALL sensors live every 300ms.
+ *   2. [NFC TAP] Reads VIP Card -> 2-second safe greeting delay (motors stay stopped).
+ *      - If ALREADY ON TAPE (C or L or R): Begins following line directly.
  *      - If OFF TAPE (!L && !C && !R): Spins 90° WHILE MONITORING IR -> Locks onto line
- *        the millisecond center IR catches the black tape!
- *   3. [OUTBOUND] Follows black line using exact compound logic + Front/Rear safety.
+ *        the millisecond center IR catches the black tape (LED turns ON)!
+ *   3. [OUTBOUND] Follows black line using exact compound logic + Front & Rear safety.
  *   4. [ENDPOINT] Tape ends -> Pauses 2s -> Spins 180° until line is re-acquired.
  *   5. [RETURN] Follows line back to startpoint -> When tape ends, stops cleanly.
  *   6. [STANDBY] Cycles back to IDLE ready for next guest!
@@ -35,10 +37,11 @@
 // ======================================================================================
 
 // 3-Channel TCRT5000 IR Line Tracking Sensors
+// Active-LOW hardware: LED is ON (pin LOW) when line detected; LED is OFF (pin HIGH) when off line
 #define IR_L 32
 #define IR_C 23
 #define IR_R 22
-#define ON_LINE HIGH // HIGH (1) when TCRT5000 detects black line
+#define ON_LINE LOW  // Sensor LED is ON when on line -> pin reads LOW
 
 // L298N Dual Motor Driver Pins
 #define L_IN1 14
@@ -71,8 +74,9 @@
 
 #define TIME_SPIN_90       1200  // Maximum timeout (ms) to find tape when spinning 90°
 #define TIME_SPIN_180      2200  // Maximum timeout (ms) to turn around at endpoint
-#define OBSTACLE_DISTANCE  15    // Stop distance threshold (cm)
+#define OBSTACLE_DISTANCE  15    // Stop distance threshold (cm) for BOTH Front and Rear
 #define LINE_LOST_MS       450   // ms without tape before declaring endpoint reached
+#define GREETING_DELAY_MS  2000  // Safe pause after card scan before any motor movement
 #define TELEMETRY_INTERVAL 300   // ms between continuous serial telemetry prints
 
 // ======================================================================================
@@ -208,7 +212,7 @@ int distanceCM(int trigPin, int echoPin) {
     delayMicroseconds(10);
     digitalWrite(trigPin, LOW);
 
-    unsigned long duration = pulseIn(echoPin, HIGH, 20000); // 20ms timeout (~3.4m)
+    unsigned long duration = pulseIn(echoPin, HIGH, 25000); // 25ms timeout (~4.2m)
     if (duration == 0) return 999;
     int cm = duration / 58;
     return (cm <= 0) ? 999 : cm;
@@ -223,20 +227,30 @@ int readDistanceCM(int trigPin, int echoPin) {
 // ======================================================================================
 // Returns true while line is active; returns false when tape is lost (endpoint)
 bool stepLineFollowing() {
-    // 1. Front Obstacle Safety Check (< 15 cm)
+    // 1. FRONT Obstacle Safety Check (< 15 cm)
     int frontDist = distanceCM(F_TRIG, F_ECHO);
     if (frontDist < OBSTACLE_DISTANCE) {
         stopMotors();
-        Serial.printf("[FRONT SAFETY] Obstacle ahead (%d cm < %d cm)! Paused...\n", frontDist, OBSTACLE_DISTANCE);
+        Serial.printf("[FRONT SAFETY] Obstacle ahead (%d cm < %d cm)! Motors halted.\n", frontDist, OBSTACLE_DISTANCE);
         return true; // Paused safely, mission resumes when cleared
     }
 
-    // 2. Read 3-Channel TCRT5000 IR Line Sensors (ON_LINE = LOW on black tape)
+    // 2. REAR Obstacle Safety Check (< 15 cm)
+    int backDist = distanceCM(B_TRIG, B_ECHO);
+    if (backDist < OBSTACLE_DISTANCE) {
+        stopMotors();
+        Serial.printf("[BACK SAFETY] Obstacle behind (%d cm < %d cm)! Motors halted.\n", backDist, OBSTACLE_DISTANCE);
+        return true; // Paused safely, mission resumes when cleared
+    }
+
+    // 3. Read 3-Channel TCRT5000 IR Line Sensors
+    // L, C, R = 1 when sensor LED is ON (on black tape)
+    // L, C, R = 0 when sensor LED is OFF (white floor / off tape)
     bool L = (digitalRead(IR_L) == ON_LINE);
     bool C = (digitalRead(IR_C) == ON_LINE);
     bool R = (digitalRead(IR_R) == ON_LINE);
 
-    // 3. Exact User Compound Line Tracking & Rear Safety Logic
+    // 4. Exact User Compound Line Tracking Cases
     if (!L && C && !R) {
         // Line centered directly under center sensor -> cruise forward
         setMotors(SPEED_CRUISE, SPEED_CRUISE);
@@ -353,8 +367,8 @@ void printSensorTelemetry() {
     byte v = rfid.PCD_ReadRegister(MFRC522::VersionReg);
     const char* nfcStatus = (v == 0x00 || v == 0xFF) ? "OFFLINE" : "READY";
 
-    // Unambiguous live telemetry stream of ALL sensors
-    Serial.printf("[SENSORS] Front: %3d cm | Back: %3d cm | IR: [L:%d C:%d R:%d] (%s-%s-%s) | NFC: %-7s | State: %-14s | VIP: %s\n",
+    // Unambiguous live telemetry stream of ALL sensors matching physical LEDs
+    Serial.printf("[SENSORS] Front: %3d cm | Back: %3d cm | IR: [L:%d C:%d R:%d] (LEDs:%s-%s-%s) | NFC: %-7s | State: %-14s | VIP: %s\n",
                   fDist, bDist,
                   L ? 1 : 0, C ? 1 : 0, R ? 1 : 0,
                   L ? "ON" : "OFF",
@@ -415,9 +429,9 @@ void setup() {
     Serial.println("\n--- HARDWARE SENSOR HEALTH CHECK ---");
     Serial.printf("  Front Ultrasonic (Trig %d, Echo %d) : %d cm\n", F_TRIG, F_ECHO, distanceCM(F_TRIG, F_ECHO));
     Serial.printf("  Back Ultrasonic  (Trig %d, Echo %d) : %d cm\n", B_TRIG, B_ECHO, distanceCM(B_TRIG, B_ECHO));
-    Serial.printf("  IR Left   (Pin %d) : Raw=%d (%s)\n", IR_L, digitalRead(IR_L), (digitalRead(IR_L) == ON_LINE) ? "ON TAPE" : "OFF TAPE");
-    Serial.printf("  IR Center (Pin %d) : Raw=%d (%s)\n", IR_C, digitalRead(IR_C), (digitalRead(IR_C) == ON_LINE) ? "ON TAPE" : "OFF TAPE");
-    Serial.printf("  IR Right  (Pin %d) : Raw=%d (%s)\n", IR_R, digitalRead(IR_R), (digitalRead(IR_R) == ON_LINE) ? "ON TAPE" : "OFF TAPE");
+    Serial.printf("  IR Left   (Pin %d) : Raw=%d (LED: %s)\n", IR_L, digitalRead(IR_L), (digitalRead(IR_L) == ON_LINE) ? "ON (1)" : "OFF (0)");
+    Serial.printf("  IR Center (Pin %d) : Raw=%d (LED: %s)\n", IR_C, digitalRead(IR_C), (digitalRead(IR_C) == ON_LINE) ? "ON (1)" : "OFF (0)");
+    Serial.printf("  IR Right  (Pin %d) : Raw=%d (LED: %s)\n", IR_R, digitalRead(IR_R), (digitalRead(IR_R) == ON_LINE) ? "ON (1)" : "OFF (0)");
     Serial.printf("  NFC Reader (SDA %d): %s (Version: 0x%02X)\n", NFC_SS_PIN, (nfcVer == 0x00 || nfcVer == 0xFF) ? "FAIL/OFFLINE" : "READY", nfcVer);
     Serial.println("------------------------------------\n");
 
@@ -447,23 +461,24 @@ void loop() {
         case STATE_IDLE: {
             if (checkNfcTap()) {
                 stopMotors();
-                delay(600); // Brief greeting pause
+                Serial.printf("[SAFE DELAY] VIP Card Verified! Pausing %d ms before departure...\n", GREETING_DELAY_MS);
+                delay(GREETING_DELAY_MS); // Safe 2-second pause! Motors DO NOT move immediately
 
-                // CHECK IR SENSORS FIRST!
+                // Check IR Sensors
                 bool L = (digitalRead(IR_L) == ON_LINE);
                 bool C = (digitalRead(IR_C) == ON_LINE);
                 bool R = (digitalRead(IR_R) == ON_LINE);
 
-                Serial.printf("\n[IR CHECK ON TAP] Sensors: Left=%d, Center=%d, Right=%d\n", L ? 1 : 0, C ? 1 : 0, R ? 1 : 0);
+                Serial.printf("\n[IR CHECK AFTER SCAN] Sensors (LED ON = 1): Left=%d, Center=%d, Right=%d\n", L ? 1 : 0, C ? 1 : 0, R ? 1 : 0);
 
                 if (C || L || R) {
-                    // Robot is ALREADY sitting on the black line! Follow line directly without spinning!
-                    Serial.println("[START] Robot is already aligned on black tape! Following line directly...");
+                    // Robot is ALREADY sitting on the line (at least one LED is ON)
+                    Serial.println("[START] Black tape detected under sensors! Following line directly...");
                     currentState = STATE_ESCORT_OUTBOUND;
                     lineLostActive = false;
                 } else {
-                    // Robot is off the line (facing guest). Spin to find the line!
-                    Serial.println("[START] Robot off tape -> Spinning 90° to find and lock onto black tape...");
+                    // Robot is off the line (all LEDs OFF). Spin to find the line!
+                    Serial.println("[START] All sensor LEDs are OFF. Spinning 90° to find and lock onto line...");
                     stateStartTime = millis();
                     currentState = STATE_SPIN_90;
                 }
@@ -471,8 +486,17 @@ void loop() {
             break;
         }
 
-        // ---------- 2. SPIN 90 DEGREES TO LINE (SMART IR LOCK) ----------
+        // ---------- 2. SPIN 90 DEGREES TO LINE (SMART IR LOCK + DUAL US SAFETY) ----------
         case STATE_SPIN_90: {
+            // Front & Rear safety while turning
+            int fDist = distanceCM(F_TRIG, F_ECHO);
+            int bDist = distanceCM(B_TRIG, B_ECHO);
+            if (fDist < OBSTACLE_DISTANCE || bDist < OBSTACLE_DISTANCE) {
+                stopMotors();
+                Serial.printf("[SPIN SAFETY] Obstacle nearby (Front:%d cm, Back:%d cm)! Turn paused...\n", fDist, bDist);
+                break;
+            }
+
             // Spin turn towards line
             setMotors(SPEED_SPIN, -SPEED_SPIN);
 
@@ -481,12 +505,11 @@ void loop() {
             bool L = (digitalRead(IR_L) == ON_LINE);
             bool R = (digitalRead(IR_R) == ON_LINE);
 
-            // After turning for at least 250ms (clears initial stationary contact),
-            // if ANY sensor catches black tape, STOP and start line following!
+            // After turning for at least 250ms, the moment an LED turns ON (line caught), lock onto line!
             if ((now - stateStartTime > 250) && (C || L || R)) {
                 stopMotors();
                 delay(200);
-                Serial.println("[LINE LOCKED] IR sensor caught black tape! Following line to destination...");
+                Serial.println("[LINE LOCKED] IR sensor LED turned ON (Tape caught)! Following line to destination...");
                 currentState = STATE_ESCORT_OUTBOUND;
                 lineLostActive = false;
                 break;
@@ -527,8 +550,16 @@ void loop() {
             break;
         }
 
-        // ---------- 5. SPIN 180 DEGREES TO RETURN (SMART IR LOCK) ----------
+        // ---------- 5. SPIN 180 DEGREES TO RETURN (SMART IR LOCK + DUAL US SAFETY) ----------
         case STATE_SPIN_180: {
+            int fDist = distanceCM(F_TRIG, F_ECHO);
+            int bDist = distanceCM(B_TRIG, B_ECHO);
+            if (fDist < OBSTACLE_DISTANCE || bDist < OBSTACLE_DISTANCE) {
+                stopMotors();
+                Serial.printf("[SPIN SAFETY] Obstacle nearby (Front:%d cm, Back:%d cm)! Turn paused...\n", fDist, bDist);
+                break;
+            }
+
             setMotors(SPEED_SPIN, -SPEED_SPIN);
 
             // Check IR sensors while spinning 180°:
@@ -536,7 +567,6 @@ void loop() {
             bool L = (digitalRead(IR_L) == ON_LINE);
             bool R = (digitalRead(IR_R) == ON_LINE);
 
-            // After 1000ms of turning, as soon as tape is detected, lock onto line:
             if ((now - stateStartTime > 1000) && (C || L || R)) {
                 stopMotors();
                 delay(200);
