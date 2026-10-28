@@ -1583,20 +1583,33 @@ const char* stateStr(RobotState s) {
 // 8. NFC / RFID CARD READER SCANNER
 // ======================================================================================
 void checkNfcReader() {
-    if (!rfid.PICC_IsNewCardPresent()) return;
-
     unsigned long now = millis();
+
+    // 1. Live Periodic NFC Diagnostic Status (every 3 seconds in Serial Monitor)
+    static unsigned long lastNfcDiagTime = 0;
+    if (now - lastNfcDiagTime > 3000) {
+        lastNfcDiagTime = now;
+        byte v = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+        if (v == 0x00 || v == 0xFF) {
+            Serial.printf("[NFC STATUS] ⚠️ Communication Failure (Version: 0x%02X). Check pins: SS=%d, RST=%d, SCK=%d, MISO=%d, MOSI=%d\n", v, NFC_SS_PIN, NFC_RST_PIN, NFC_SCK_PIN, NFC_MISO_PIN, NFC_MOSI_PIN);
+        } else {
+            Serial.printf("[NFC STATUS] ✅ Reader Ready (Version: 0x%02X). Tap your card on the reader...\n", v);
+        }
+    }
+
     if (now - lastNfcScanTime < 1500) return; // Debounce repeated reads
 
-    if (!rfid.PICC_ReadCardSerial()) {
-        lastNfcScanTime = now;
-        Serial.println("[NFC] Read error (card pulled away too fast)");
-        postTelemetry("NFC_TAP", ",\"valid\":false,\"uid\":\"READ_ERROR\",\"reason\":\"READ_ERROR\"");
+    // 2. Check for card presence (supports both fresh taps and cards already on reader)
+    bool cardPresent = rfid.PICC_IsNewCardPresent();
+    if (!cardPresent && !rfid.PICC_ReadCardSerial()) {
+        return;
+    }
+    if (cardPresent && !rfid.PICC_ReadCardSerial()) {
         return;
     }
     lastNfcScanTime = now;
 
-    // Convert UID bytes to uppercase Hex String (e.g. "53B80572420001")
+    // 3. Convert UID bytes to uppercase Hex String (e.g. "53B80572420001")
     String uidStr = "";
     for (byte i = 0; i < rfid.uid.size; i++) {
         if (rfid.uid.uidByte[i] < 0x10) uidStr += "0";
@@ -1608,10 +1621,10 @@ void checkNfcReader() {
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
 
-    Serial.print("[NFC Scanned] Code: ");
+    Serial.print("\n>>> [NFC Scanned] Code: ");
     Serial.println(uidStr);
 
-    // Check against the 21 official VIP cards
+    // 4. Check against the 21 official VIP cards
     int matchedIdx = -1;
     for (int i = 0; i < TOTAL_VIP_CARDS; i++) {
         if (uidStr.equalsIgnoreCase(VIP_CARDS[i].code)) {
@@ -1632,7 +1645,7 @@ void checkNfcReader() {
             markersCount = 0;
             delay(1000); // 1s greeting pause before rolling
             currentState = STATE_ESCORTING;
-            Serial.println("[START] Autonomous Escort Initiated by VIP Card!");
+            Serial.println("[START] Autonomous Escort Initiated by VIP Card!\n");
         }
     } else {
         Serial.printf("[NFC INVALID] Unknown Card Code: %s\n", uidStr.c_str());
@@ -1659,9 +1672,18 @@ void setup() {
     Serial.println("=======================================================");
 
     // 0. Initialize SPI & MFRC522 NFC Reader
+    pinMode(NFC_RST_PIN, OUTPUT);
+    digitalWrite(NFC_RST_PIN, LOW);
+    delay(20);
+    digitalWrite(NFC_RST_PIN, HIGH);
+    delay(50);
+
+    SPI.end(); // Clear any default bus binding
     SPI.begin(NFC_SCK_PIN, NFC_MISO_PIN, NFC_MOSI_PIN, NFC_SS_PIN);
     rfid.PCD_Init();
-    delay(10);
+    delay(20);
+    rfid.PCD_SetAntennaGain(MFRC522::RxGain_max); // Set maximum RF sensitivity
+
     byte nfcVer = rfid.PCD_ReadRegister(MFRC522::VersionReg);
     Serial.printf("[NFC] MFRC522 Init (Version: 0x%02X) - Pins: SS=%d, RST=%d, SCK=%d, MISO=%d, MOSI=%d\n", nfcVer, NFC_SS_PIN, NFC_RST_PIN, NFC_SCK_PIN, NFC_MISO_PIN, NFC_MOSI_PIN);
     if (nfcVer == 0x00 || nfcVer == 0xFF) {
