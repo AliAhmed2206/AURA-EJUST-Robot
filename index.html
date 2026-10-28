@@ -66,6 +66,34 @@
   #emergencyBtn.active { background: #ff1744; color: #ffffff; animation: pulseAlert 0.7s infinite alternate; }
   @keyframes pulseAlert { from { box-shadow: 0 0 15px #ff1744; } to { box-shadow: 0 0 30px #ff5252; } }
 
+  #guestModeBtn { padding: 6px 14px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: .08em;
+    background: rgba(11,24,18,.85); border: 1px solid #00e676; color: #69f0ae; cursor: pointer;
+    backdrop-filter: blur(6px); box-shadow: 0 0 12px rgba(0,230,118,.25); transition: all .25s ease; user-select: none;
+    display: inline-flex; align-items: center; gap: 5px; }
+  #guestModeBtn:hover { background: #00e676; color: #05030a; box-shadow: 0 0 20px rgba(0,230,118,.6); }
+
+  /* Discreet corner toggle button visible when UI is hidden */
+  #floatingUiToggle {
+    position: fixed; top: 12px; right: 14px; width: 34px; height: 34px; border-radius: 50%;
+    background: rgba(11,7,20,.6); border: 1px solid rgba(255,255,255,.2); color: rgba(255,255,255,.7);
+    display: flex; align-items: center; justify-content: center; font-size: 16px; cursor: pointer;
+    z-index: 99; backdrop-filter: blur(8px); opacity: 0; transition: opacity .3s ease, transform .2s ease;
+    user-select: none; pointer-events: none; }
+  body.clean-guest-mode #floatingUiToggle {
+    opacity: 0.22; pointer-events: auto; }
+  body.clean-guest-mode #floatingUiToggle:hover {
+    opacity: 0.95; transform: scale(1.1); box-shadow: 0 0 16px rgba(0,229,255,.5); }
+
+  /* When clean-guest-mode is active, hide all overlay bars except the face and captions */
+  body.clean-guest-mode #topBar {
+    opacity: 0 !important; pointer-events: none !important; transform: translateY(-20px); transition: all .35s ease; }
+  body.clean-guest-mode #chatBar {
+    display: none !important; }
+  body.clean-guest-mode #chatFloatingPill {
+    display: none !important; }
+  body.clean-guest-mode #nfcBanner {
+    display: none !important; }
+
   #nfcBanner { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); padding: 8px 18px; border-radius: 99px;
     font-size: 13px; font-weight: 600; letter-spacing: .06em; background: rgba(11,7,20,.9); border: 1px solid #00e5ff;
     color: #e6f4ff; box-shadow: 0 0 22px rgba(0,229,255,.35); z-index: 9; display: none; pointer-events: none; white-space: nowrap; }
@@ -769,11 +797,13 @@
 </head>
 <body>
 <canvas id="face"></canvas>
+<div id="floatingUiToggle" title="Tap to Exit Guest Mode / Restore Operator Controls">🛠️</div>
 <div id="topBar">
   <div id="bleBadge" title="Tap to pair ESP32 over Bluetooth">● BLE: TAP TO PAIR</div>
   <div id="langBadge" title="Tap to switch Language (English / العربية)">🌐 EN</div>
   <div id="micBadge" title="Microphone Status (Tap to unblock/allow)">🎙️ LISTENING</div>
   <div style="flex:1"></div>
+  <button id="guestModeBtn" title="Clean Face & Captions Only (Exhibition Mode for Guests)">🎭 GUEST MODE</button>
   <button id="emergencyBtn" title="EMERGENCY STOP / SWITCH TO AUTONOMOUS FAILSAFE">🛑 EMERGENCY OVERRIDE</button>
   <button id="chatToggleBtn" title="Toggle Command & Chat Bar (Hide / Show)">💬 CHAT</button>
   <button id="camBtn" title="See what AURA sees in Fullscreen">📷 CAMERA</button>
@@ -5143,6 +5173,52 @@ if ($('emergencyBtn')) {
     triggerEmergencyOverride();
   };
 }
+
+let guestCleanMode = false;
+function toggleGuestCleanMode(force = null) {
+  guestCleanMode = (force !== null) ? force : !guestCleanMode;
+  if (guestCleanMode) {
+    document.body.classList.add('clean-guest-mode');
+    notice('🎭 Guest Exhibition Mode: ON (Double-tap anywhere or tap 🛠️ in corner to restore controls)', 3500);
+  } else {
+    document.body.classList.remove('clean-guest-mode');
+    notice('🛠️ Operator Controls Restored', 2000);
+  }
+}
+window.toggleGuestCleanMode = toggleGuestCleanMode;
+
+if ($('guestModeBtn')) {
+  $('guestModeBtn').onclick = (e) => {
+    e.stopPropagation();
+    toggleGuestCleanMode(true);
+  };
+}
+if ($('floatingUiToggle')) {
+  $('floatingUiToggle').onclick = (e) => {
+    e.stopPropagation();
+    toggleGuestCleanMode(false);
+  };
+}
+
+let lastTapForGuest = 0;
+document.body.addEventListener('touchend', (e) => {
+  const now = Date.now();
+  if (now - lastTapForGuest < 380) {
+    if (!e.target.closest('#settings') && !e.target.closest('#chatBar input')) {
+      toggleGuestCleanMode();
+      lastTapForGuest = 0;
+    }
+  } else {
+    lastTapForGuest = now;
+  }
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'h' || e.key === 'H') {
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+    toggleGuestCleanMode();
+  }
+});
 
 $('settingsBtn').onclick = (e) => { e.stopPropagation(); openSettings(); };
 if ($('camModeBtn')) $('camModeBtn').onclick = (e) => { e.stopPropagation(); toggleCamMode(); };
