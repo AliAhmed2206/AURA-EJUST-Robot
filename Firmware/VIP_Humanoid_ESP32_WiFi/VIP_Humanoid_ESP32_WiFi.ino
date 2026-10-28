@@ -61,6 +61,8 @@
 #include <HTTPClient.h>
 
 #include <ESPmDNS.h>
+#include <SPI.h>
+#include <MFRC522.h>
 
 
 
@@ -201,6 +203,51 @@ String currentServerUrl = SERVER_BASE_URL;
 
 
 #define B_ECHO 34
+
+// ---------- MFRC522 NFC / RFID CARD READER PINS ----------
+// Standard ESP32 VSPI Default Pins: SCK=18, MISO=19, MOSI=23, SS=5, RST=21
+// (If your physical wiring uses custom SPI pins, adjust them here)
+#define NFC_SS_PIN    5     // RC522 SDA / SS Pin
+#define NFC_RST_PIN   21    // RC522 RST Pin
+#define NFC_SCK_PIN   18    // SPI Clock (SCK)
+#define NFC_MISO_PIN  19    // SPI Master-In-Slave-Out (MISO)
+#define NFC_MOSI_PIN  23    // SPI Master-Out-Slave-In (MOSI)
+
+// ---------- 21 PRE-LOADED VIP SUMMIT NFC CARDS (IDs 1 .. 21) ----------
+struct VIPCard {
+    const char* code;
+    uint8_t id;
+};
+
+const VIPCard VIP_CARDS[] = {
+    {"53B80572420001", 1},
+    {"53B90572420001", 2},
+    {"53BA0572420001", 3},
+    {"53BB0572420001", 4},
+    {"53C00572420001", 5},
+    {"53C10572420001", 6},
+    {"53C20572420001", 7},
+    {"53C30572420001", 8},
+    {"53C80572420001", 9},
+    {"53C90572420001", 10},
+    {"53CA0572420001", 11},
+    {"53CB0572420001", 12},
+    {"53D00572420001", 13},
+    {"53D10572420001", 14},
+    {"53D20572420001", 15},
+    {"53D30572420001", 16},
+    {"53D80572420001", 17},
+    {"53D90572420001", 18},
+    {"53DA0572420001", 19},
+    {"53DB0572420001", 20},
+    {"53E00572420001", 21}
+};
+const int TOTAL_VIP_CARDS = sizeof(VIP_CARDS) / sizeof(VIP_CARDS[0]);
+
+MFRC522 rfid(NFC_SS_PIN, NFC_RST_PIN);
+unsigned long lastNfcScanTime = 0;
+String activeCardUid = "NONE";
+
 
 
 
@@ -516,6 +563,7 @@ int distanceCM(int trig, int echo) {
 
 
 
+void checkNfcReader();
 void postTelemetry(const String& event, const String& extraJson = "");
 
 
@@ -1532,6 +1580,68 @@ const char* stateStr(RobotState s) {
 
 
 
+
+// ======================================================================================
+// 8. NFC / RFID CARD READER SCANNER
+// ======================================================================================
+void checkNfcReader() {
+    if (!rfid.PICC_IsNewCardPresent()) return;
+
+    unsigned long now = millis();
+    if (now - lastNfcScanTime < 1500) return; // Debounce repeated reads
+
+    if (!rfid.PICC_ReadCardSerial()) {
+        lastNfcScanTime = now;
+        Serial.println("[NFC] Read error (card pulled away too fast)");
+        postTelemetry("NFC_TAP", ",\"valid\":false,\"uid\":\"READ_ERROR\",\"reason\":\"READ_ERROR\"");
+        return;
+    }
+    lastNfcScanTime = now;
+
+    // Convert UID bytes to uppercase Hex String (e.g. "53B80572420001")
+    String uidStr = "";
+    for (byte i = 0; i < rfid.uid.size; i++) {
+        if (rfid.uid.uidByte[i] < 0x10) uidStr += "0";
+        uidStr += String(rfid.uid.uidByte[i], HEX);
+    }
+    uidStr.toUpperCase();
+    activeCardUid = uidStr;
+
+    rfid.PICC_HaltA();
+    rfid.PCD_StopCrypto1();
+
+    Serial.print("[NFC Scanned] Code: ");
+    Serial.println(uidStr);
+
+    // Check against the 21 official VIP cards
+    int matchedIdx = -1;
+    for (int i = 0; i < TOTAL_VIP_CARDS; i++) {
+        if (uidStr.equalsIgnoreCase(VIP_CARDS[i].code)) {
+            matchedIdx = i;
+            break;
+        }
+    }
+
+    if (matchedIdx >= 0) {
+        int guestId = VIP_CARDS[matchedIdx].id;
+        Serial.printf("[NFC VALID] Welcome VIP Guest %d (Card: %s)\n", guestId, uidStr.c_str());
+
+        // Send live telemetry to Relay Bridge & Phone Screen over Wi-Fi
+        postTelemetry("NFC_TAP", ",\"valid\":true,\"uid\":\"" + uidStr + "\",\"id\":" + String(guestId) + ",\"name\":\"VIP Guest " + String(guestId) + "\"");
+
+        // If in IDLE or ARRIVED, start autonomous escort
+        if (currentState == STATE_IDLE || currentState == STATE_ARRIVED) {
+            markersCount = 0;
+            delay(1000); // 1s greeting pause before rolling
+            currentState = STATE_ESCORTING;
+            Serial.println("[START] Autonomous Escort Initiated by VIP Card!");
+        }
+    } else {
+        Serial.printf("[NFC INVALID] Unknown Card Code: %s\n", uidStr.c_str());
+        postTelemetry("NFC_TAP", ",\"valid\":false,\"uid\":\"" + uidStr + "\",\"reason\":\"UNREGISTERED\"");
+    }
+}
+
 void setup() {
 
 
@@ -1550,7 +1660,17 @@ void setup() {
 
     Serial.println("=======================================================");
 
-
+    // 0. Initialize SPI & MFRC522 NFC Reader
+    SPI.begin(NFC_SCK_PIN, NFC_MISO_PIN, NFC_MOSI_PIN, NFC_SS_PIN);
+    rfid.PCD_Init();
+    delay(10);
+    byte nfcVer = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+    Serial.printf("[NFC] MFRC522 Init (Version: 0x%02X) - Pins: SS=%d, RST=%d, SCK=%d, MISO=%d, MOSI=%d\n", nfcVer, NFC_SS_PIN, NFC_RST_PIN, NFC_SCK_PIN, NFC_MISO_PIN, NFC_MOSI_PIN);
+    if (nfcVer == 0x00 || nfcVer == 0xFF) {
+        Serial.println("[NFC WARNING] Reader communication failed! Check 3.3V power and SPI wiring.");
+    } else {
+        Serial.println("[NFC READY] MFRC522 is listening for VIP cards (1-3 cm range)...\n");
+    }
 
     // 1. Initialize IR Sensors
 
@@ -1898,6 +2018,10 @@ void loop() {
 
 
     }
+
+    // 6. NFC / RFID Card Reader Check
+    checkNfcReader();
+
 
 
 
