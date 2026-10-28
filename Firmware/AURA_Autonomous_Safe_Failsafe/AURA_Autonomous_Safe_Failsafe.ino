@@ -44,6 +44,12 @@
 #define TIME_SPIN_90      1000 // Milliseconds to spin 90 degrees (adjust for floor/battery)
 #define OBSTACLE_DISTANCE 15
 
+// ---------- OBSTACLE AVOIDANCE TUNING (DETOUR) ----------
+#define AVOID_TURN_TIME   700  // Time (ms) to turn away / towards the line (~80-90°)
+#define AVOID_SIDE_TIME   900  // Time (ms) to drive sideways away from obstacle
+#define AVOID_PASS_TIME   1200 // Time (ms) to drive forward past the obstacle
+#define AVOID_TIMEOUT     4000 // Max search time (ms) to reacquire the line
+
 // ======================================================================================
 // 3. REGISTERED VIP GUEST CARDS TABLE (Sheet2 + Official Replacements)
 // ======================================================================================
@@ -210,7 +216,91 @@ bool checkNfcTap() {
 }
 
 // ======================================================================================
-// 7. SETUP
+// 7. OBSTACLE AVOIDANCE (BYPASS DETOUR AND REJOIN BLACK LINE)
+// ======================================================================================
+void avoidObstacle() {
+  Serial.printf("\n[OBSTACLE] Front obstacle detected (< %d cm)! Executing bypass detour...\n", OBSTACLE_DISTANCE);
+  stopRobot();
+  delay(300);
+
+  // 1. Turn Right away from the black tape
+  Serial.println("[AVOID 1/5] Turning right away from line...");
+  moveRobot(TURN_SPEED, -TURN_SPEED);
+  delay(AVOID_TURN_TIME);
+  stopRobot();
+  delay(150);
+
+  // 2. Move forward sideways to clear the obstacle width
+  Serial.println("[AVOID 2/5] Driving sideways to clear obstacle width...");
+  moveRobot(SPEED, SPEED);
+  delay(AVOID_SIDE_TIME);
+  stopRobot();
+  delay(150);
+
+  // 3. Turn Left to face parallel to the line
+  Serial.println("[AVOID 3/5] Turning left parallel to line...");
+  moveRobot(-TURN_SPEED, TURN_SPEED);
+  delay(AVOID_TURN_TIME);
+  stopRobot();
+  delay(150);
+
+  // 4. Drive forward alongside the obstacle to pass it
+  Serial.println("[AVOID 4/5] Driving forward past obstacle length...");
+  moveRobot(SPEED, SPEED);
+  delay(AVOID_PASS_TIME);
+  stopRobot();
+  delay(150);
+
+  // 5. Turn Left toward the line to intercept it
+  Serial.println("[AVOID 5/5] Turning left toward black line...");
+  moveRobot(-TURN_SPEED, TURN_SPEED);
+  delay(AVOID_TURN_TIME);
+  stopRobot();
+  delay(150);
+
+  // 6. Move forward until IR sensors intercept the black line
+  Serial.println("[AVOID 6/5] Searching forward for black tape...");
+  unsigned long searchStart = millis();
+  bool lineFound = false;
+
+  moveRobot(SPEED, SPEED);
+  while (millis() - searchStart < AVOID_TIMEOUT) {
+    // Safety: if something blocks front while searching, brake
+    if (distanceCM(F_TRIG, F_ECHO) < 10) {
+      stopRobot();
+      delay(200);
+      break;
+    }
+
+    bool L = (digitalRead(IR_L) == ON_LINE);
+    bool C = (digitalRead(IR_C) == ON_LINE);
+    bool R = (digitalRead(IR_R) == ON_LINE);
+
+    if (L || C || R) {
+      lineFound = true;
+      Serial.printf("[AVOID REJOINED] Black tape detected! [L:%d C:%d R:%d]\n", L ? 1 : 0, C ? 1 : 0, R ? 1 : 0);
+      break;
+    }
+    delay(10);
+  }
+  stopRobot();
+  delay(200);
+
+  if (lineFound) {
+    // 7. Turn slightly Right to straighten out along the line
+    Serial.println("[AVOID ALIGN] Straightening robot onto line...");
+    moveRobot(TURN_SPEED, -TURN_SPEED);
+    delay(AVOID_TURN_TIME / 2);
+    stopRobot();
+    delay(200);
+    Serial.println("[RESUME] Obstacle cleared! Resuming normal line following.\n");
+  } else {
+    Serial.println("[AVOID TIMEOUT] Search window finished. Resuming normal line following.\n");
+  }
+}
+
+// ======================================================================================
+// 8. SETUP
 // ======================================================================================
 void setup() {
   Serial.begin(115200);
@@ -331,9 +421,9 @@ void loop() {
     return;
   }
 
-  // 2. Stop when an obstacle is detected in front
+  // 2. Obstacle Detection & Bypass Detour
   if (distanceCM(F_TRIG, F_ECHO) < OBSTACLE_DISTANCE) {
-    stopRobot();
+    avoidObstacle();
     return;
   }
 
@@ -367,9 +457,8 @@ void loop() {
     stopRobot();
 
     if (distanceCM(B_TRIG, B_ECHO) > OBSTACLE_DISTANCE) {
-      moveRobot(-SPEED, -SPEED);
-      delay(250);
-      stopRobot();
+    stopRobot();
+    return;
     }
   }
   else {
