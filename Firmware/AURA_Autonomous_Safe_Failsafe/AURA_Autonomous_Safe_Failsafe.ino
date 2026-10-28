@@ -1,46 +1,17 @@
-/*
- * ======================================================================================
- * AURA-EJUST HUMANOID ROBOT - AUTONOMOUS SAFE FAILSAFE BACKUP FIRMWARE
- * ======================================================================================
- * 100% STANDALONE EMERGENCY & BACKUP FIRMWARE - ZERO WI-FI / ZERO AI DEPENDENCY
- * 
- * Hardware Pinout (Exact Match to Physical Robot Wiring):
- *   - IR Line Tracking:  IR_L=32, IR_C=23, IR_R=22
- *                        (Center IR_C = Middle sensor for the perfect black tape)
- *                        (IR_L & IR_R = Side sensors for steering accuracy)
- *                        (1 = Black Tape, 0 = White Floor)
- *   - L298N Motors:      L_IN1=14, L_IN2=27, L_EN=25 | R_IN1=26, R_IN2=33, R_EN=13
- *   - Ultrasonics:       Front (TRIG=19, ECHO=35) | Rear (TRIG=18, ECHO=34)
- *   - MFRC522 RC522:     SDA=5, RST=2, SCK=15, MISO=16, MOSI=17
- * 
- * Safety & Operation Rules:
- *   - NO blind movement: After scan, motors DO NOT move unless black tape is detected!
- *   - Middle IR (Pin 23) reading (1) = Cruise forward directly along the line!
- *   - Left/Right IR reading (1)     = Precise steering correction (Left/Right)!
- *   - Dual Ultrasonic Safety        = Front (<15cm) & Rear (<15cm) Emergency Stop!
- * ======================================================================================
- */
-
 #include <Arduino.h>
 #include <SPI.h>
 #include <MFRC522.h>
 
 // ======================================================================================
-// 1. PIN DEFINITIONS
+// 1. PIN DEFINITIONS (EXACT USER HARDWARE MATCH)
 // ======================================================================================
 
-// 3-Channel TCRT5000 IR Line Tracking Sensors on Front
-// Pin 32 = Left IR (Steering accuracy)
-// Pin 23 = Center IR (Middle sensor for perfect black tape)
-// Pin 22 = Right IR (Steering accuracy)
+// ---------- IR SENSORS ----------
 #define IR_L 32
-#define IR_C 23
+#define IR_C 23  // Middle sensor for the perfect black tape
 #define IR_R 22
 
-// Black Tape = 1 (HIGH), White Floor = 0 (LOW)
-#define ON_LINE HIGH
-
-// L298N Dual Motor Driver Pins
+// ---------- L293D / L298N MOTOR DRIVER ----------
 #define L_IN1 14
 #define L_IN2 27
 #define L_EN  25
@@ -49,518 +20,342 @@
 #define R_IN2 33
 #define R_EN  13
 
-// Dual HC-SR04 Ultrasonic Distance Sensors
-#define F_TRIG 19
-#define F_ECHO 35
-#define B_TRIG 18
-#define B_ECHO 34
+// ---------- FRONT ULTRASONIC ----------
+#define F_TRIG 18
+#define F_ECHO 34
 
-// MFRC522 RFID Card Reader (Custom SPI Pins)
-#define NFC_SS_PIN    5     // RC522 SDA / SS -> D5 (GPIO 5)
-#define NFC_RST_PIN   2     // RC522 RST      -> D2 (GPIO 2)
-#define NFC_SCK_PIN   15    // RC522 SCK      -> D15 (GPIO 15)
-#define NFC_MISO_PIN  16    // RC522 MISO     -> RX2 (GPIO 16)
-#define NFC_MOSI_PIN  17    // RC522 MOSI     -> TX2 (GPIO 17)
+// ---------- REAR ULTRASONIC ----------
+#define B_TRIG 19
+#define B_ECHO 35
+
+// ---------- MFRC522 RC522 RFID READER ----------
+#define NFC_SS_PIN    5     // RC522 SDA / SS -> D5
+#define NFC_RST_PIN   2     // RC522 RST      -> D2
+#define NFC_SCK_PIN   15    // RC522 SCK      -> D15
+#define NFC_MISO_PIN  16    // RC522 MISO     -> RX2
+#define NFC_MOSI_PIN  17    // RC522 MOSI     -> TX2
 
 // ======================================================================================
-// 2. SPEED & TIME CALIBRATIONS
+// 2. SETTINGS
 // ======================================================================================
-#define SPEED_CRUISE       165   // Forward line following speed (0-255)
-#define SPEED_TURN         195   // Turn steering speed for curves (0-255)
-#define SPEED_SPIN         200   // Turn-in-place spin speed (0-255)
-
-#define TIME_SPIN_180      2200  // Maximum timeout (ms) to turn around at endpoint
-#define OBSTACLE_DISTANCE  15    // Stop distance threshold (cm) for BOTH Front and Rear
-#define LINE_LOST_MS       450   // ms without tape before declaring endpoint reached
-#define TELEMETRY_INTERVAL 300   // ms between continuous serial telemetry prints
+#define ON_LINE           HIGH // 1 on Black Tape, 0 on White Floor
+#define SPEED             170
+#define TURN_SPEED        200
+#define OBSTACLE_DISTANCE 15
 
 // ======================================================================================
 // 3. REGISTERED VIP GUEST CARDS TABLE (Sheet2 + Official Replacements)
 // ======================================================================================
 struct VIPCard {
-    const char* code;
-    const char* name;
-    uint8_t id;
+  const char* code;
+  const char* name;
+  uint8_t id;
 };
 
 const VIPCard VIP_CARDS[] = {
-    {"53D30572420001", "Ahmed Elsabagh", 1},
-    {"53D80572420001", "Amr Eltawil", 2},
-    {"53DA0572420001", "Fukoda", 3},
-    {"53D90572420001", "Haitham El-Hussieny", 4},
-    {"53DB0572420001", "Maha Elsabrouty", 5},
-    {"53C80572420001", "Ahmed M.R. Fath EL-Bab", 6},
-    {"53C30572420001", "Ayman Nada", 7},
-    {"53C10572420001", "Sameh Sherif", 8},
-    {"53C90572420001", "Mohamed Nasef", 9},
-    {"53C20572420001", "Wael Khaireldin", 10},
-    {"53CA0572420001", "Mohamed Gouda", 11},
-    {"53BB0572420001", "Mohamed Adel", 12},
-    {"53D00572420001", "Ahmed Abd El-Malek", 13},
-    // Fallback entries for remaining cards
-    {"53B80572420001", "VIP Guest 14", 14},
-    {"53B90572420001", "VIP Guest 15", 15},
-    {"53BA0572420001", "VIP Guest 16", 16},
-    {"53C00572420001", "VIP Guest 17", 17},
-    {"53CB0572420001", "VIP Guest 18", 18},
-    {"53D10572420001", "VIP Guest 19", 19},
-    {"53D20572420001", "VIP Guest 20", 20},
-    {"53E00572420001", "VIP Guest 21", 21}
+  {"53D30572420001", "Ahmed Elsabagh", 1},
+  {"53D80572420001", "Amr Eltawil", 2},
+  {"53DA0572420001", "Fukoda", 3},
+  {"53D90572420001", "Haitham El-Hussieny", 4},
+  {"53DB0572420001", "Maha Elsabrouty", 5},
+  {"53C80572420001", "Ahmed M.R. Fath EL-Bab", 6},
+  {"53C30572420001", "Ayman Nada", 7},
+  {"53C10572420001", "Sameh Sherif", 8},
+  {"53C90572420001", "Mohamed Nasef", 9},
+  {"53C20572420001", "Wael Khaireldin", 10},
+  {"53CA0572420001", "Mohamed Gouda", 11},
+  {"53BB0572420001", "Mohamed Adel", 12},
+  {"53D00572420001", "Ahmed Abd El-Malek", 13},
+  // Fallbacks
+  {"53B80572420001", "VIP Guest 14", 14},
+  {"53B90572420001", "VIP Guest 15", 15},
+  {"53BA0572420001", "VIP Guest 16", 16},
+  {"53C00572420001", "VIP Guest 17", 17},
+  {"53CB0572420001", "VIP Guest 18", 18},
+  {"53D10572420001", "VIP Guest 19", 19},
+  {"53D20572420001", "VIP Guest 20", 20},
+  {"53E00572420001", "VIP Guest 21", 21}
 };
 const int TOTAL_VIP_CARDS = sizeof(VIP_CARDS) / sizeof(VIP_CARDS[0]);
 
 MFRC522 rfid(NFC_SS_PIN, NFC_RST_PIN);
 
-// Helper to normalize card UIDs (strip colons, dashes, and whitespace)
-String normalizeUid(const String& raw) {
-    String clean = "";
-    for (size_t i = 0; i < raw.length(); i++) {
-        char c = raw[i];
-        if (c != ':' && c != '-' && c != ' ') {
-            clean += (char)toupper(c);
-        }
-    }
-    return clean;
-}
-
-// ======================================================================================
-// 4. ROBOT STATES & TIMERS
-// ======================================================================================
-enum EscortState {
-    STATE_IDLE,              // Waiting for guest to tap card and line to be present
-    STATE_ESCORT_OUTBOUND,   // Following black tape toward endpoint
-    STATE_ENDPOINT_PAUSE,    // Arrived at endpoint: pause before returning
-    STATE_SPIN_180,          // Turning 180 degrees to face back
-    STATE_ESCORT_RETURN      // Following line back to startpoint
-};
-
-EscortState currentState = STATE_IDLE;
-
-unsigned long stateStartTime = 0;
-unsigned long lineLostStartTime = 0;
-unsigned long lastNfcScanTime = 0;
-unsigned long lastTelemetryPrint = 0;
-bool lineLostActive = false;
+bool robotRunning = false;
 int activeGuestId = 0;
 String activeGuestName = "NONE";
+unsigned long lastNfcScanTime = 0;
 
-// Using int signature to prevent Arduino IDE preprocessor forward declaration bugs
-const char* stateStr(int s) {
-    switch (s) {
-        case STATE_IDLE:            return "IDLE";
-        case STATE_ESCORT_OUTBOUND: return "OUTBOUND";
-        case STATE_ENDPOINT_PAUSE:  return "ENDPOINT_PAUSE";
-        case STATE_SPIN_180:        return "SPIN_180";
-        case STATE_ESCORT_RETURN:   return "RETURN";
-        default:                    return "UNKNOWN";
+String normalizeUid(const String& raw) {
+  String clean = "";
+  for (size_t i = 0; i < raw.length(); i++) {
+    char c = raw[i];
+    if (c != ':' && c != '-' && c != ' ') {
+      clean += (char)toupper(c);
     }
+  }
+  return clean;
 }
 
 // ======================================================================================
-// 5. MOTOR PWM DRIVER (ESP32 Core 2.x & 3.x Universal)
+// 4. MOTOR CONTROL
 // ======================================================================================
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
-void setupPWM(int pin, int ch) {
-    ledcAttach(pin, 1000, 8);
+void setupPWM(int pin) {
+  ledcAttach(pin, 1000, 8);
 }
-void motorPWM(int pin, int ch, int speed) {
-    ledcWrite(pin, constrain(speed, 0, 255));
+void motorPWM(int pin, int speed) {
+  ledcWrite(pin, constrain(speed, 0, 255));
 }
 #else
-void setupPWM(int pin, int ch) {
-    ledcSetup(ch, 1000, 8);
-    ledcAttachPin(pin, ch);
+void setupPWM(int pin) {
+  int ch = (pin == L_EN) ? 0 : 1;
+  ledcSetup(ch, 1000, 8);
+  ledcAttachPin(pin, ch);
 }
-void motorPWM(int pin, int ch, int speed) {
-    ledcWrite(ch, constrain(speed, 0, 255));
+void motorPWM(int pin, int speed) {
+  int ch = (pin == L_EN) ? 0 : 1;
+  ledcWrite(ch, constrain(speed, 0, 255));
 }
 #endif
 
-void setMotors(int leftSpeed, int rightSpeed) {
-    leftSpeed = constrain(leftSpeed, -255, 255);
-    rightSpeed = constrain(rightSpeed, -255, 255);
+// Positive = forward, negative = reverse
+void motor(int in1, int in2, int en, int speed) {
+  speed = constrain(speed, -255, 255);
 
-    // Left Motors
-    digitalWrite(L_IN1, leftSpeed > 0 ? HIGH : LOW);
-    digitalWrite(L_IN2, leftSpeed < 0 ? HIGH : LOW);
-    motorPWM(L_EN, 0, abs(leftSpeed));
+  digitalWrite(in1, speed > 0);
+  digitalWrite(in2, speed < 0);
 
-    // Right Motors
-    digitalWrite(R_IN1, rightSpeed > 0 ? HIGH : LOW);
-    digitalWrite(R_IN2, rightSpeed < 0 ? HIGH : LOW);
-    motorPWM(R_EN, 1, abs(rightSpeed));
+  motorPWM(en, abs(speed));
 }
 
-void stopMotors() {
-    setMotors(0, 0);
+void moveRobot(int left, int right) {
+  motor(L_IN1, L_IN2, L_EN, left);
+  motor(R_IN1, R_IN2, R_EN, right);
 }
 
-// ======================================================================================
-// 6. ULTRASONIC SENSOR (cm)
-// ======================================================================================
-int distanceCM(int trigPin, int echoPin) {
-    digitalWrite(trigPin, LOW);
-    delayMicroseconds(2);
-    digitalWrite(trigPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(trigPin, LOW);
-
-    unsigned long duration = pulseIn(echoPin, HIGH, 25000); // 25ms timeout (~4.2m)
-    if (duration == 0) return 999;
-    int cm = duration / 58;
-    return (cm <= 0) ? 999 : cm;
-}
-
-int readDistanceCM(int trigPin, int echoPin) {
-    return distanceCM(trigPin, echoPin);
+void stopRobot() {
+  moveRobot(0, 0);
 }
 
 // ======================================================================================
-// 7. LINE TRACKING STEP & SAFETY LOGIC
+// 5. ULTRASONIC DISTANCE
 // ======================================================================================
-// Returns true while line is active; returns false when tape is lost (endpoint)
-bool stepLineFollowing() {
-    // 1. FRONT Obstacle Safety Check (< 15 cm)
-    int frontDist = distanceCM(F_TRIG, F_ECHO);
-    if (frontDist < OBSTACLE_DISTANCE) {
-        stopMotors();
-        Serial.printf("[FRONT SAFETY] Obstacle ahead (%d cm < %d cm)! Motors halted.\n", frontDist, OBSTACLE_DISTANCE);
-        return true; // Paused safely, mission resumes when cleared
-    }
+int distanceCM(int trig, int echo) {
+  digitalWrite(trig, LOW);
+  delayMicroseconds(2);
 
-    // 2. REAR Obstacle Safety Check (< 15 cm)
-    int backDist = distanceCM(B_TRIG, B_ECHO);
-    if (backDist < OBSTACLE_DISTANCE) {
-        stopMotors();
-        Serial.printf("[BACK SAFETY] Obstacle behind (%d cm < %d cm)! Motors halted.\n", backDist, OBSTACLE_DISTANCE);
-        return true; // Paused safely, mission resumes when cleared
-    }
+  digitalWrite(trig, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trig, LOW);
 
-    // 3. Read 3-Channel TCRT5000 IR Line Sensors on Front
-    // 1 = Black Tape, 0 = White Floor
-    bool L = (digitalRead(IR_L) == ON_LINE);
-    bool C = (digitalRead(IR_C) == ON_LINE); // Center IR (middle sensor for perfect black tape)
-    bool R = (digitalRead(IR_R) == ON_LINE);
+  unsigned long duration = pulseIn(echo, HIGH, 12000);
 
-    // 4. Exact User Line Tracking Cases
-    if (!L && C && !R) {
-        // Line centered directly under center sensor (1 in middle) -> cruise forward!
-        setMotors(SPEED_CRUISE, SPEED_CRUISE);
-        lineLostActive = false;
-    }
-    else if ((L && !R && C) || (L && !R && !C)) {
-        // Line under left sensor (drifting right) -> steer left!
-        setMotors(SPEED_CRUISE / 2, SPEED_TURN);
-        lineLostActive = false;
-    }
-    else if ((R && !L && C) || (R && !L && !C)) {
-        // Line under right sensor (drifting left) -> steer right!
-        setMotors(SPEED_TURN, SPEED_CRUISE / 2);
-        lineLostActive = false;
-    }
-    else if (L && C && R) {
-        // All sensors on black tape (station line / wide cross marker) -> cruise smoothly forward!
-        setMotors(SPEED_CRUISE, SPEED_CRUISE);
-        lineLostActive = false;
-    }
-    else if (!L && !C && !R) {
-        // No line detected under any sensor! Check rear clearance
-        if (distanceCM(B_TRIG, B_ECHO) > OBSTACLE_DISTANCE) {
-            // Safe clearance behind robot (> OBSTACLE_DISTANCE)
-            if (!lineLostActive) {
-                lineLostActive = true;
-                lineLostStartTime = millis();
-            } else if (millis() - lineLostStartTime >= LINE_LOST_MS) {
-                // Confirmed end of black tape reached safely!
-                stopMotors();
-                lineLostActive = false;
-                return false; // Reached endpoint!
-            }
-            // Creep forward slowly to verify if tape really ended
-            setMotors(SPEED_CRUISE / 2, SPEED_CRUISE / 2);
-        } else {
-            // Obstacle detected behind robot (<= OBSTACLE_DISTANCE)
-            stopMotors();
-            Serial.printf("[REAR SAFETY] Obstacle detected behind (%d cm <= %d cm)! Motors halted.\n",
-                          distanceCM(B_TRIG, B_ECHO), OBSTACLE_DISTANCE);
-        }
-    }
-    else {
-        // Fallback smooth drive
-        setMotors(SPEED_CRUISE, SPEED_CRUISE);
-    }
+  if (duration == 0) {
+    return 999;  // No echo detected
+  }
 
-    return true;
+  return duration / 58;
 }
 
 // ======================================================================================
-// 8. NFC CARD READER
+// 6. NFC CARD SCAN (START TRIGGER)
 // ======================================================================================
 bool checkNfcTap() {
-    if (!rfid.PICC_IsNewCardPresent() && !rfid.PICC_ReadCardSerial()) return false;
-    if (!rfid.PICC_ReadCardSerial()) return false;
+  if (!rfid.PICC_IsNewCardPresent() && !rfid.PICC_ReadCardSerial()) return false;
+  if (!rfid.PICC_ReadCardSerial()) return false;
 
-    unsigned long now = millis();
-    if (now - lastNfcScanTime < 1500) return false;
-    lastNfcScanTime = now;
+  unsigned long now = millis();
+  if (now - lastNfcScanTime < 1500) return false;
+  lastNfcScanTime = now;
 
-    String uidStr = "";
-    for (byte i = 0; i < rfid.uid.size; i++) {
-        if (rfid.uid.uidByte[i] < 0x10) uidStr += "0";
-        uidStr += String(rfid.uid.uidByte[i], HEX);
+  String uidStr = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    if (rfid.uid.uidByte[i] < 0x10) uidStr += "0";
+    uidStr += String(rfid.uid.uidByte[i], HEX);
+  }
+  uidStr.toUpperCase();
+
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+
+  String formattedUid = "";
+  for (size_t i = 0; i < uidStr.length(); i++) {
+    formattedUid += uidStr[i];
+    if (i % 2 == 1 && i < uidStr.length() - 1) formattedUid += ":";
+  }
+
+  Serial.println("\n=======================================================");
+  Serial.printf(">>> [NFC SCANNED] Card UID: %s (%s)\n", formattedUid.c_str(), uidStr.c_str());
+
+  int matchedIdx = -1;
+  for (int i = 0; i < TOTAL_VIP_CARDS; i++) {
+    if (uidStr.equalsIgnoreCase(normalizeUid(VIP_CARDS[i].code))) {
+      matchedIdx = i;
+      break;
     }
-    uidStr.toUpperCase();
+  }
 
-    rfid.PICC_HaltA();
-    rfid.PCD_StopCrypto1();
-
-    // Format with colons for clean Serial display (e.g. 53:DA:05:72:42:00:01)
-    String formattedUid = "";
-    for (size_t i = 0; i < uidStr.length(); i++) {
-        formattedUid += uidStr[i];
-        if (i % 2 == 1 && i < uidStr.length() - 1) formattedUid += ":";
-    }
-
-    Serial.println("\n=======================================================");
-    Serial.printf(">>> [NFC SCANNED] Card UID: %s (%s)\n", formattedUid.c_str(), uidStr.c_str());
-
-    int matchedIdx = -1;
-    for (int i = 0; i < TOTAL_VIP_CARDS; i++) {
-        if (uidStr.equalsIgnoreCase(normalizeUid(VIP_CARDS[i].code))) {
-            matchedIdx = i;
-            break;
-        }
-    }
-
-    if (matchedIdx >= 0) {
-        activeGuestId = VIP_CARDS[matchedIdx].id;
-        activeGuestName = VIP_CARDS[matchedIdx].name;
-        Serial.printf(">>> [VIP VERIFIED] Welcome %s (Guest ID: %d)!\n", activeGuestName.c_str(), activeGuestId);
-        Serial.println("=======================================================\n");
-        return true;
-    } else {
-        Serial.printf(">>> [NFC UNKNOWN] Unregistered Card: %s (Access Denied)\n", formattedUid.c_str());
-        Serial.println("=======================================================\n");
-        return false;
-    }
+  if (matchedIdx >= 0) {
+    activeGuestId = VIP_CARDS[matchedIdx].id;
+    activeGuestName = VIP_CARDS[matchedIdx].name;
+    Serial.printf(">>> [VIP VERIFIED] Welcome %s (Guest ID: %d)!\n", activeGuestName.c_str(), activeGuestId);
+    Serial.println("=======================================================\n");
+    return true;
+  } else {
+    Serial.printf(">>> [NFC UNKNOWN] Unregistered Card: %s\n", formattedUid.c_str());
+    Serial.println("=======================================================\n");
+    return false;
+  }
 }
 
 // ======================================================================================
-// 9. CONTINUOUS SENSOR & NFC TELEMETRY (SERIAL MONITOR)
+// 7. SETUP
 // ======================================================================================
-void printSensorTelemetry() {
+void setup() {
+  Serial.begin(115200);
+  delay(200);
+
+  Serial.println("\n=======================================================");
+  Serial.println("  AURA-EJUST LINE FOLLOWER & VIP NFC ESCORT ROBOT");
+  Serial.println("=======================================================");
+
+  // Initialize IR Sensors
+  pinMode(IR_L, INPUT);
+  pinMode(IR_C, INPUT);
+  pinMode(IR_R, INPUT);
+
+  // Initialize Motors
+  pinMode(L_IN1, OUTPUT);
+  pinMode(L_IN2, OUTPUT);
+  pinMode(R_IN1, OUTPUT);
+  pinMode(R_IN2, OUTPUT);
+
+  setupPWM(L_EN);
+  setupPWM(R_EN);
+
+  // Initialize Ultrasonics
+  pinMode(F_TRIG, OUTPUT);
+  pinMode(F_ECHO, INPUT);
+
+  pinMode(B_TRIG, OUTPUT);
+  pinMode(B_ECHO, INPUT);
+
+  stopRobot();
+
+  // Initialize NFC Reader
+  pinMode(NFC_RST_PIN, OUTPUT);
+  digitalWrite(NFC_RST_PIN, LOW);
+  delay(20);
+  digitalWrite(NFC_RST_PIN, HIGH);
+  delay(50);
+
+  SPI.end();
+  SPI.begin(NFC_SCK_PIN, NFC_MISO_PIN, NFC_MOSI_PIN, NFC_SS_PIN);
+  rfid.PCD_Init();
+  delay(20);
+  rfid.PCD_SetAntennaGain(MFRC522::RxGain_max);
+
+  byte nfcVer = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+  Serial.println("\n--- HARDWARE SENSOR HEALTH CHECK ---");
+  Serial.printf("  Front Ultrasonic (Trig %d, Echo %d) : %d cm\n", F_TRIG, F_ECHO, distanceCM(F_TRIG, F_ECHO));
+  Serial.printf("  Back Ultrasonic  (Trig %d, Echo %d) : %d cm\n", B_TRIG, B_ECHO, distanceCM(B_TRIG, B_ECHO));
+  Serial.printf("  IR Left   (Pin %d) : %d (%s)\n", IR_L, (digitalRead(IR_L) == ON_LINE), (digitalRead(IR_L) == ON_LINE) ? "TAPE (1)" : "OFF (0)");
+  Serial.printf("  IR Center (Pin %d) : %d (%s)\n", IR_C, (digitalRead(IR_C) == ON_LINE), (digitalRead(IR_C) == ON_LINE) ? "TAPE (1)" : "OFF (0)");
+  Serial.printf("  IR Right  (Pin %d) : %d (%s)\n", IR_R, (digitalRead(IR_R) == ON_LINE), (digitalRead(IR_R) == ON_LINE) ? "TAPE (1)" : "OFF (0)");
+  Serial.printf("  NFC Reader (SDA %d): %s (Version: 0x%02X)\n", NFC_SS_PIN, (nfcVer == 0x00 || nfcVer == 0xFF) ? "OFFLINE" : "READY", nfcVer);
+  Serial.println("------------------------------------\n");
+
+  Serial.println("=======================================================");
+  Serial.println("  STANDBY: Scan VIP Card on Reader to Start Escort!");
+  Serial.println("=======================================================\n");
+
+  robotRunning = false;
+}
+
+// ======================================================================================
+// 8. MAIN LOOP
+// ======================================================================================
+void loop() {
+  // Continuous Live Telemetry in Serial Monitor (Every 300ms)
+  static unsigned long lastPrint = 0;
+  if (millis() - lastPrint >= 300) {
+    lastPrint = millis();
+
     int fDist = distanceCM(F_TRIG, F_ECHO);
     int bDist = distanceCM(B_TRIG, B_ECHO);
 
-    // 1 = Black Tape, 0 = White Floor
-    int L = (digitalRead(IR_L) == ON_LINE) ? 1 : 0;
-    int C = (digitalRead(IR_C) == ON_LINE) ? 1 : 0; // Middle sensor for perfect black tape
-    int R = (digitalRead(IR_R) == ON_LINE) ? 1 : 0;
+    bool L = digitalRead(IR_L) == ON_LINE;
+    bool C = digitalRead(IR_C) == ON_LINE;
+    bool R = digitalRead(IR_R) == ON_LINE;
 
     byte v = rfid.PCD_ReadRegister(MFRC522::VersionReg);
     const char* nfcStatus = (v == 0x00 || v == 0xFF) ? "OFFLINE" : "READY";
 
-    Serial.printf("[SENSORS] Front: %3d cm | Back: %3d cm | IR: [L:%d C:%d R:%d] | NFC: %-7s | State: %-14s | VIP: %s\n",
+    Serial.printf("[SENSORS] Front: %3d cm | Back: %3d cm | IR: [L:%d C:%d R:%d] | NFC: %-7s | Robot: %-7s | VIP: %s\n",
                   fDist, bDist,
-                  L, C, R,
+                  L ? 1 : 0, C ? 1 : 0, R ? 1 : 0,
                   nfcStatus,
-                  stateStr(currentState),
+                  robotRunning ? "RUNNING" : "STANDBY",
                   activeGuestName.c_str());
-}
+  }
 
-// ======================================================================================
-// 10. SETUP
-// ======================================================================================
-void setup() {
-    Serial.begin(115200);
-    delay(200);
-
-    Serial.println("\n=======================================================");
-    Serial.println("  AURA-EJUST HUMANOID — AUTONOMOUS STANDALONE BACKUP");
-    Serial.println("=======================================================");
-
-    // 1. Initialize IR Sensors
-    pinMode(IR_L, INPUT);
-    pinMode(IR_C, INPUT);
-    pinMode(IR_R, INPUT);
-
-    // 2. Initialize Motors
-    pinMode(L_IN1, OUTPUT);
-    pinMode(L_IN2, OUTPUT);
-    pinMode(R_IN1, OUTPUT);
-    pinMode(R_IN2, OUTPUT);
-    setupPWM(L_EN, 0);
-    setupPWM(R_EN, 1);
-    stopMotors();
-
-    // 3. Initialize Ultrasonics
-    pinMode(F_TRIG, OUTPUT);
-    pinMode(F_ECHO, INPUT);
-    pinMode(B_TRIG, OUTPUT);
-    pinMode(B_ECHO, INPUT);
-
-    // 4. Initialize MFRC522 RC522 Reader (Exact Custom Pins)
-    pinMode(NFC_RST_PIN, OUTPUT);
-    digitalWrite(NFC_RST_PIN, LOW);
-    delay(20);
-    digitalWrite(NFC_RST_PIN, HIGH);
-    delay(50);
-
-    SPI.end();
-    SPI.begin(NFC_SCK_PIN, NFC_MISO_PIN, NFC_MOSI_PIN, NFC_SS_PIN);
-    rfid.PCD_Init();
-    delay(20);
-    rfid.PCD_SetAntennaGain(MFRC522::RxGain_max);
-
-    byte nfcVer = rfid.PCD_ReadRegister(MFRC522::VersionReg);
-
-    // Initial Health Diagnostic Print of ALL Sensors
-    Serial.println("\n--- HARDWARE SENSOR HEALTH CHECK ---");
-    Serial.printf("  Front Ultrasonic (Trig %d, Echo %d) : %d cm\n", F_TRIG, F_ECHO, distanceCM(F_TRIG, F_ECHO));
-    Serial.printf("  Back Ultrasonic  (Trig %d, Echo %d) : %d cm\n", B_TRIG, B_ECHO, distanceCM(B_TRIG, B_ECHO));
-    Serial.printf("  IR Left   (Pin %d) : %d (%s)\n", IR_L, (digitalRead(IR_L) == ON_LINE), (digitalRead(IR_L) == ON_LINE) ? "BLACK TAPE (1)" : "WHITE (0)");
-    Serial.printf("  IR Center (Pin %d) : %d (%s)\n", IR_C, (digitalRead(IR_C) == ON_LINE), (digitalRead(IR_C) == ON_LINE) ? "BLACK TAPE (1)" : "WHITE (0)");
-    Serial.printf("  IR Right  (Pin %d) : %d (%s)\n", IR_R, (digitalRead(IR_R) == ON_LINE), (digitalRead(IR_R) == ON_LINE) ? "BLACK TAPE (1)" : "WHITE (0)");
-    Serial.printf("  NFC Reader (SDA %d): %s (Version: 0x%02X)\n", NFC_SS_PIN, (nfcVer == 0x00 || nfcVer == 0xFF) ? "FAIL/OFFLINE" : "READY", nfcVer);
-    Serial.println("------------------------------------\n");
-
-    Serial.println("=======================================================");
-    Serial.println("  SYSTEM READY — STANDBY FOR VIP CARD TAP");
-    Serial.println("=======================================================\n");
-
-    currentState = STATE_IDLE;
-}
-
-// ======================================================================================
-// 11. MAIN AUTONOMOUS LOOP
-// ======================================================================================
-void loop() {
-    unsigned long now = millis();
-
-    // 1. Continuous Live Serial Monitor Telemetry (Every 300ms)
-    if (now - lastTelemetryPrint >= TELEMETRY_INTERVAL) {
-        lastTelemetryPrint = now;
-        printSensorTelemetry();
+  // 1. NFC Scan Gate: Waits for VIP Card tap to start
+  if (!robotRunning) {
+    stopRobot();
+    if (checkNfcTap()) {
+      Serial.println("[START] Card verified! Starting line follower in 800ms...");
+      delay(800); // Brief greeting pause
+      robotRunning = true;
     }
+    delay(10);
+    return;
+  }
 
-    // 2. Autonomous Escort Mission State Machine
-    switch (currentState) {
+  // 2. Stop when an obstacle is detected in front
+  if (distanceCM(F_TRIG, F_ECHO) < OBSTACLE_DISTANCE) {
+    stopRobot();
+    return;
+  }
 
-        // ---------- 1. IDLE: WAITING FOR GUEST CARD & BLACK TAPE ----------
-        case STATE_IDLE: {
-            if (checkNfcTap()) {
-                stopMotors();
-                Serial.printf("\n>>> [VIP CARD VERIFIED] Welcome %s (Guest ID: %d)!\n", activeGuestName.c_str(), activeGuestId);
+  // 3. Read IR sensors (1 = Black Tape, 0 = White Floor)
+  bool L = digitalRead(IR_L) == ON_LINE;
+  bool C = digitalRead(IR_C) == ON_LINE; // 1 in middle is responsible for the perfect line
+  bool R = digitalRead(IR_R) == ON_LINE;
 
-                // Check IR Sensors immediately:
-                // 1 in middle (C) is responsible for the perfect line
-                bool L = (digitalRead(IR_L) == ON_LINE);
-                bool C = (digitalRead(IR_C) == ON_LINE);
-                bool R = (digitalRead(IR_R) == ON_LINE);
+  // 4. Follow the line (User's Exact Verified Logic)
+  if (!L && C && !R) {
+    // Center sensor detects the line -> Cruise forward straight!
+    moveRobot(SPEED, SPEED);
+  }
+  else if ((L && !R && C) || (L && !R && !C)) {
+    // Line is on the left -> Steer left
+    moveRobot(SPEED / 2, TURN_SPEED);
+  }
+  else if ((R && !L && C) || (R && !L && !C)) {
+    // Line is on the right -> Steer right
+    moveRobot(TURN_SPEED, SPEED / 2);
+  }
+  else if (L && C && R) {
+    // All sensors detect the line -> Reached destination marker! Stop and wait for next guest!
+    stopRobot();
+    Serial.println("\n[DESTINATION] Cross line detected (L & C & R)! Arrived at endpoint.");
+    Serial.println("[STANDBY] Ready for next VIP guest card tap!\n");
+    robotRunning = false;
+  }
+  else if (!L && !C && !R) {
+    // Line lost: reverse only if the rear is clear
+    stopRobot();
 
-                Serial.printf("[IR ON SCAN] L:%d, C:%d (Center Tape), R:%d\n", L ? 1 : 0, C ? 1 : 0, R ? 1 : 0);
-
-                if (C || L || R) {
-                    // Robot sees the black tape!
-                    Serial.println("[START] Black tape detected under sensors! Following line in 1 second...");
-                    delay(1000);
-                    currentState = STATE_ESCORT_OUTBOUND;
-                    lineLostActive = false;
-                } else {
-                    // Robot does NOT see black tape (0 0 0).
-                    // RULE: Motors DO NOT move unless it sees the black tape!
-                    Serial.println("[NO TAPE DETECTED] All IR sensors are 0. Robot will NOT move until placed on black tape!");
-                }
-            } else if (activeGuestId > 0) {
-                // Card was already scanned, waiting for robot to be aligned on black tape:
-                bool L = (digitalRead(IR_L) == ON_LINE);
-                bool C = (digitalRead(IR_C) == ON_LINE);
-                bool R = (digitalRead(IR_R) == ON_LINE);
-
-                if (C || L || R) {
-                    Serial.println("[LINE DETECTED] Black tape detected under center sensor! Starting line following...");
-                    delay(500);
-                    currentState = STATE_ESCORT_OUTBOUND;
-                    lineLostActive = false;
-                }
-            }
-            break;
-        }
-
-        // ---------- 2. ESCORT OUTBOUND (FOLLOW LINE TO ENDPOINT) ----------
-        case STATE_ESCORT_OUTBOUND: {
-            bool onLine = stepLineFollowing();
-            if (!onLine) {
-                // Reached end of black tape!
-                stopMotors();
-                stateStartTime = millis();
-                currentState = STATE_ENDPOINT_PAUSE;
-                Serial.println("\n[STEP 2] Reached endpoint (No more tape)! Arrived at destination.");
-            }
-            break;
-        }
-
-        // ---------- 3. DESTINATION PAUSE ----------
-        case STATE_ENDPOINT_PAUSE: {
-            stopMotors();
-            if (now - stateStartTime >= 2000) { // 2s destination pause
-                stateStartTime = millis();
-                currentState = STATE_SPIN_180;
-                Serial.println("[STEP 3] Spinning 180° to face return direction...");
-            }
-            break;
-        }
-
-        // ---------- 4. SPIN 180 DEGREES TO RETURN (WITH DUAL US SAFETY & LINE LOCK) ----------
-        case STATE_SPIN_180: {
-            int fDist = distanceCM(F_TRIG, F_ECHO);
-            int bDist = distanceCM(B_TRIG, B_ECHO);
-            if (fDist < OBSTACLE_DISTANCE || bDist < OBSTACLE_DISTANCE) {
-                stopMotors();
-                Serial.printf("[SPIN SAFETY] Obstacle nearby (Front:%d cm, Back:%d cm)! Turn paused...\n", fDist, bDist);
-                break;
-            }
-
-            setMotors(SPEED_SPIN, -SPEED_SPIN);
-
-            // Check IR sensors while spinning 180°:
-            bool C = (digitalRead(IR_C) == ON_LINE);
-            bool L = (digitalRead(IR_L) == ON_LINE);
-            bool R = (digitalRead(IR_R) == ON_LINE);
-
-            if ((now - stateStartTime > 1000) && (C || L || R)) {
-                stopMotors();
-                delay(200);
-                Serial.println("[LINE LOCKED] Tape detected after 180° spin! Returning to startpoint...");
-                currentState = STATE_ESCORT_RETURN;
-                lineLostActive = false;
-                break;
-            }
-
-            if (now - stateStartTime >= TIME_SPIN_180) {
-                stopMotors();
-                delay(200);
-                Serial.println("[TIMEOUT] 180° spin timeout. Returning to startpoint...");
-                currentState = STATE_ESCORT_RETURN;
-                lineLostActive = false;
-            }
-            break;
-        }
-
-        // ---------- 5. ESCORT RETURN (FOLLOW LINE BACK TO START) ----------
-        case STATE_ESCORT_RETURN: {
-            bool onLine = stepLineFollowing();
-            if (!onLine) {
-                // Returned back to startpoint where tape ends!
-                stopMotors();
-                activeGuestId = 0;
-                activeGuestName = "NONE";
-                currentState = STATE_IDLE;
-                Serial.println("\n[CYCLE COMPLETE] Back at startpoint! Ready for next VIP guest.\n");
-            }
-            break;
-        }
+    if (distanceCM(B_TRIG, B_ECHO) > OBSTACLE_DISTANCE) {
+      moveRobot(-SPEED, -SPEED);
+      delay(250);
+      stopRobot();
     }
+  }
+  else {
+    // Other sensor combinations
+    moveRobot(SPEED, SPEED);
+  }
 
-    delay(10); // Smooth RTOS scheduling yield
+  delay(10);
 }
