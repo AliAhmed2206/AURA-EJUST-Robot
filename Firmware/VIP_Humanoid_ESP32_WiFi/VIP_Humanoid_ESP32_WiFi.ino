@@ -10,25 +10,18 @@
  * 
  * Hardware Pinout (Exact Match to Physical Robot Wiring):
  *   - IR Line Tracking:  IR_L=32, IR_C=23, IR_R=22
- *                        (ON_LINE = LOW: LED is ON when detecting line, OFF when off tape)
+ *                        (Center IR_C = Middle sensor for the perfect black tape)
+ *                        (IR_L & IR_R = Side sensors for steering accuracy)
+ *                        (1 = Black Tape, 0 = White Floor)
  *   - L298N Motors:      L_IN1=14, L_IN2=27, L_EN=25 | R_IN1=26, R_IN2=33, R_EN=13
  *   - Ultrasonics:       Front (TRIG=19, ECHO=35) | Rear (TRIG=18, ECHO=34)
  *   - MFRC522 RC522:     SDA=5, RST=2, SCK=15, MISO=16, MOSI=17
  * 
- * Dual Ultrasonic Safety:
- *   - Front obstacle (< 15cm) -> Immediate Emergency Stop
- *   - Rear obstacle (< 15cm)  -> Immediate Emergency Stop
- * 
- * Smart IR Line-Lock Mission Cycle:
- *   1. [IDLE] Waits for VIP card tap while streaming ALL sensors live.
- *   2. [NFC TAP] Reads VIP Card -> 2-second safe greeting delay (motors stay stopped).
- *      - If ALREADY ON TAPE (C or L or R): Begins following line directly.
- *      - If OFF TAPE (!L && !C && !R): Spins 90° WHILE MONITORING IR -> Locks onto line
- *        the millisecond center IR catches the black tape (LED turns ON)!
- *   3. [OUTBOUND] Follows black line using exact compound logic + Front & Rear safety.
- *   4. [ENDPOINT] Tape ends -> Pauses 2s -> Spins 180° until line is re-acquired.
- *   5. [RETURN] Follows line back to startpoint -> When tape ends, stops cleanly.
- *   6. [STANDBY] Cycles back to IDLE ready for next guest!
+ * Safety & Operation Rules:
+ *   - NO blind movement: After scan, motors DO NOT move unless black tape is detected!
+ *   - Middle IR (Pin 23) reading (1) = Cruise forward directly along the line!
+ *   - Left/Right IR reading (1)     = Precise steering correction (Left/Right)!
+ *   - Dual Ultrasonic Safety        = Front (<15cm) & Rear (<15cm) Emergency Stop!
  * ======================================================================================
  */
 
@@ -53,12 +46,16 @@ String currentServerUrl     = SERVER_BASE_URL;
 // 2. PIN DEFINITIONS
 // ======================================================================================
 
-// 3-Channel TCRT5000 IR Line Tracking Sensors
-// Active-LOW hardware: LED is ON (pin LOW) when line detected; LED is OFF (pin HIGH) when off line
+// 3-Channel TCRT5000 IR Line Tracking Sensors on Front
+// Pin 32 = Left IR (Steering accuracy)
+// Pin 23 = Center IR (Middle sensor for perfect black tape)
+// Pin 22 = Right IR (Steering accuracy)
 #define IR_L 32
 #define IR_C 23
 #define IR_R 22
-#define ON_LINE LOW  // Sensor LED is ON when on line -> pin reads LOW
+
+// Black Tape = 1 (HIGH), White Floor = 0 (LOW)
+#define ON_LINE HIGH
 
 // L298N Dual Motor Driver Pins
 #define L_IN1 14
@@ -89,11 +86,9 @@ String currentServerUrl     = SERVER_BASE_URL;
 #define SPEED_TURN         195   // Turning adjustment on curves (0-255)
 #define SPEED_SPIN         200   // Turn-in-place spin speed (0-255)
 
-#define TIME_SPIN_90       1200  // Maximum timeout (ms) to find tape when spinning 90°
 #define TIME_SPIN_180      2200  // Maximum timeout (ms) to turn around at endpoint
 #define OBSTACLE_DISTANCE  15    // Front/Rear obstacle safety threshold (cm)
 #define LINE_LOST_MS       450   // ms without tape before declaring endpoint reached
-#define GREETING_DELAY_MS  2000  // Safe pause after card scan before any motor movement
 #define TELEMETRY_INTERVAL 400   // Wi-Fi Telemetry streaming interval (ms)
 #define SERIAL_PRINT_MS    300   // Serial Monitor telemetry interval (ms)
 
@@ -150,8 +145,7 @@ String normalizeUid(const String& raw) {
 // 5. ROBOT STATE MACHINE
 // ======================================================================================
 enum EscortState {
-    STATE_IDLE,              // Waiting for guest card tap
-    STATE_SPIN_90,           // Turning to find and lock onto black tape
+    STATE_IDLE,              // Waiting for guest card tap and black tape
     STATE_ESCORT_OUTBOUND,   // Following line to destination endpoint
     STATE_ENDPOINT_PAUSE,    // Arrived at destination: 2s pause
     STATE_SPIN_180,          // Turning 180 degrees to face return direction
@@ -174,7 +168,6 @@ String activeCardUid               = "NONE";
 const char* stateStr(int s) {
     switch (s) {
         case STATE_IDLE:            return "IDLE";
-        case STATE_SPIN_90:         return "TURNING_90";
         case STATE_ESCORT_OUTBOUND: return "ESCORTING";
         case STATE_ENDPOINT_PAUSE:  return "ARRIVED";
         case STATE_SPIN_180:        return "TURNING_180";
@@ -294,31 +287,30 @@ bool stepLineFollowing() {
         return true; // Still on line, waiting for obstacle to clear
     }
 
-    // 3. Read 3-Channel TCRT5000 IR Line Sensors
-    // L, C, R = 1 when sensor LED is ON (on black tape)
-    // L, C, R = 0 when sensor LED is OFF (white floor / off tape)
+    // 3. Read 3-Channel TCRT5000 IR Line Sensors on Front
+    // 1 = Black Tape, 0 = White Floor
     bool L = (digitalRead(IR_L) == ON_LINE);
-    bool C = (digitalRead(IR_C) == ON_LINE);
+    bool C = (digitalRead(IR_C) == ON_LINE); // Middle sensor for perfect black tape
     bool R = (digitalRead(IR_R) == ON_LINE);
 
-    // 4. Exact User Compound Line Tracking Cases
+    // 4. Exact User Line Tracking Cases
     if (!L && C && !R) {
-        // Line centered directly under center sensor -> cruise forward
+        // Line centered directly under center sensor (1 in middle) -> cruise forward!
         setMotors(SPEED_CRUISE, SPEED_CRUISE);
         lineLostActive = false;
     }
     else if ((L && !R && C) || (L && !R && !C)) {
-        // Line under left sensor (drifting right) -> steer left
+        // Line under left sensor (drifting right) -> steer left!
         setMotors(SPEED_CRUISE / 2, SPEED_TURN);
         lineLostActive = false;
     }
     else if ((R && !L && C) || (R && !L && !C)) {
-        // Line under right sensor (drifting left) -> steer right
+        // Line under right sensor (drifting left) -> steer right!
         setMotors(SPEED_TURN, SPEED_CRUISE / 2);
         lineLostActive = false;
     }
     else if (L && C && R) {
-        // All sensors on black tape (station line / wide cross marker) -> cruise smoothly
+        // All sensors on black tape (station line / wide cross marker) -> cruise smoothly forward!
         setMotors(SPEED_CRUISE, SPEED_CRUISE);
         lineLostActive = false;
     }
@@ -416,19 +408,17 @@ void printSensorTelemetry() {
     int fDist = distanceCM(F_TRIG, F_ECHO);
     int bDist = distanceCM(B_TRIG, B_ECHO);
 
-    bool L = (digitalRead(IR_L) == ON_LINE);
-    bool C = (digitalRead(IR_C) == ON_LINE);
-    bool R = (digitalRead(IR_R) == ON_LINE);
+    // 1 = Black Tape, 0 = White Floor
+    int L = (digitalRead(IR_L) == ON_LINE) ? 1 : 0;
+    int C = (digitalRead(IR_C) == ON_LINE) ? 1 : 0; // Middle sensor for perfect black tape
+    int R = (digitalRead(IR_R) == ON_LINE) ? 1 : 0;
 
     byte v = rfid.PCD_ReadRegister(MFRC522::VersionReg);
     const char* nfcStatus = (v == 0x00 || v == 0xFF) ? "OFFLINE" : "READY";
 
-    Serial.printf("[SENSORS] Front: %3d cm | Back: %3d cm | IR: [L:%d C:%d R:%d] (LEDs:%s-%s-%s) | NFC: %-7s | State: %-14s | VIP: %s\n",
+    Serial.printf("[SENSORS] Front: %3d cm | Back: %3d cm | IR: [L:%d C:%d R:%d] | NFC: %-7s | State: %-14s | VIP: %s\n",
                   fDist, bDist,
-                  L ? 1 : 0, C ? 1 : 0, R ? 1 : 0,
-                  L ? "ON" : "OFF",
-                  C ? "ON" : "OFF",
-                  R ? "ON" : "OFF",
+                  L, C, R,
                   nfcStatus,
                   stateStr(currentState),
                   activeGuestName.c_str());
@@ -484,9 +474,9 @@ void setup() {
     Serial.println("\n--- HARDWARE SENSOR HEALTH CHECK ---");
     Serial.printf("  Front Ultrasonic (Trig %d, Echo %d) : %d cm\n", F_TRIG, F_ECHO, distanceCM(F_TRIG, F_ECHO));
     Serial.printf("  Back Ultrasonic  (Trig %d, Echo %d) : %d cm\n", B_TRIG, B_ECHO, distanceCM(B_TRIG, B_ECHO));
-    Serial.printf("  IR Left   (Pin %d) : Raw=%d (LED: %s)\n", IR_L, digitalRead(IR_L), (digitalRead(IR_L) == ON_LINE) ? "ON (1)" : "OFF (0)");
-    Serial.printf("  IR Center (Pin %d) : Raw=%d (LED: %s)\n", IR_C, digitalRead(IR_C), (digitalRead(IR_C) == ON_LINE) ? "ON (1)" : "OFF (0)");
-    Serial.printf("  IR Right  (Pin %d) : Raw=%d (LED: %s)\n", IR_R, digitalRead(IR_R), (digitalRead(IR_R) == ON_LINE) ? "ON (1)" : "OFF (0)");
+    Serial.printf("  IR Left   (Pin %d) : %d (%s)\n", IR_L, (digitalRead(IR_L) == ON_LINE), (digitalRead(IR_L) == ON_LINE) ? "BLACK TAPE (1)" : "WHITE (0)");
+    Serial.printf("  IR Center (Pin %d) : %d (%s)\n", IR_C, (digitalRead(IR_C) == ON_LINE), (digitalRead(IR_C) == ON_LINE) ? "BLACK TAPE (1)" : "WHITE (0)");
+    Serial.printf("  IR Right  (Pin %d) : %d (%s)\n", IR_R, (digitalRead(IR_R) == ON_LINE), (digitalRead(IR_R) == ON_LINE) ? "BLACK TAPE (1)" : "WHITE (0)");
     Serial.printf("  NFC Reader (SDA %d): %s (Version: 0x%02X)\n", NFC_SS_PIN, (nfcVer == 0x00 || nfcVer == 0xFF) ? "FAIL/OFFLINE" : "READY", nfcVer);
     Serial.println("------------------------------------\n");
 
@@ -528,7 +518,7 @@ void setup() {
 }
 
 // ======================================================================================
-// 13. MAIN LOOP (AUTONOMOUS ROTATION + LIVE TELEMETRY)
+// 13. MAIN LOOP (AUTONOMOUS ESCORT + LIVE TELEMETRY)
 // ======================================================================================
 void loop() {
     unsigned long now = millis();
@@ -557,76 +547,50 @@ void loop() {
     // 4. Autonomous Mission State Machine
     switch (currentState) {
 
-        // ---------- 1. IDLE: WAITING FOR GUEST CARD ----------
+        // ---------- 1. IDLE: WAITING FOR GUEST CARD & BLACK TAPE ----------
         case STATE_IDLE: {
             if (checkNfcTap()) {
                 stopMotors();
-                Serial.printf("[SAFE DELAY] VIP Card Verified! Pausing %d ms before departure...\n", GREETING_DELAY_MS);
-                delay(GREETING_DELAY_MS); // Safe 2-second pause! Motors DO NOT move immediately
+                Serial.printf("\n>>> [VIP CARD VERIFIED] Welcome %s (Guest ID: %d)!\n", activeGuestName.c_str(), activeGuestId);
 
-                // Check IR Sensors
+                // Check IR Sensors immediately:
+                // 1 in middle (C) is responsible for the perfect line
                 bool L = (digitalRead(IR_L) == ON_LINE);
                 bool C = (digitalRead(IR_C) == ON_LINE);
                 bool R = (digitalRead(IR_R) == ON_LINE);
 
-                Serial.printf("\n[IR CHECK AFTER SCAN] Sensors (LED ON = 1): Left=%d, Center=%d, Right=%d\n", L ? 1 : 0, C ? 1 : 0, R ? 1 : 0);
+                Serial.printf("[IR ON SCAN] L:%d, C:%d (Center Tape), R:%d\n", L ? 1 : 0, C ? 1 : 0, R ? 1 : 0);
 
                 if (C || L || R) {
-                    // Robot is ALREADY sitting on the black line! Follow line directly without spinning!
-                    Serial.println("[START] Robot is already aligned on black tape! Following line directly...");
+                    // Robot sees the black tape!
+                    Serial.println("[START] Black tape detected under sensors! Following line in 1 second...");
+                    delay(1000);
                     currentState = STATE_ESCORT_OUTBOUND;
                     lineLostActive = false;
                     postTelemetry("STATUS", ",\"action\":\"ESCORTING\"");
                 } else {
-                    // Robot is off the line (facing guest). Spin to find the line!
-                    Serial.println("[START] Robot off tape -> Spinning 90° to find and lock onto black tape...");
-                    stateStartTime = millis();
-                    currentState = STATE_SPIN_90;
-                    postTelemetry("STATUS", ",\"action\":\"SPIN_90\"");
+                    // Robot does NOT see black tape (0 0 0).
+                    // RULE: Motors DO NOT move unless it sees the black tape!
+                    Serial.println("[NO TAPE DETECTED] All IR sensors are 0. Robot will NOT move until placed on black tape!");
+                }
+            } else if (activeGuestId > 0) {
+                // Card was already scanned, waiting for robot to be aligned on black tape:
+                bool L = (digitalRead(IR_L) == ON_LINE);
+                bool C = (digitalRead(IR_C) == ON_LINE);
+                bool R = (digitalRead(IR_R) == ON_LINE);
+
+                if (C || L || R) {
+                    Serial.println("[LINE DETECTED] Black tape detected under center sensor! Starting line following...");
+                    delay(500);
+                    currentState = STATE_ESCORT_OUTBOUND;
+                    lineLostActive = false;
+                    postTelemetry("STATUS", ",\"action\":\"ESCORTING\"");
                 }
             }
             break;
         }
 
-        // ---------- 2. SPIN 90 DEGREES TO LINE (SMART IR LOCK + DUAL US SAFETY) ----------
-        case STATE_SPIN_90: {
-            int fDist = distanceCM(F_TRIG, F_ECHO);
-            int bDist = distanceCM(B_TRIG, B_ECHO);
-            if (fDist < OBSTACLE_DISTANCE || bDist < OBSTACLE_DISTANCE) {
-                stopMotors();
-                Serial.printf("[SPIN SAFETY] Obstacle nearby (Front:%d cm, Back:%d cm)! Turn paused...\n", fDist, bDist);
-                break;
-            }
-
-            setMotors(SPEED_SPIN, -SPEED_SPIN);
-
-            // Check IR sensors while spinning:
-            bool C = (digitalRead(IR_C) == ON_LINE);
-            bool L = (digitalRead(IR_L) == ON_LINE);
-            bool R = (digitalRead(IR_R) == ON_LINE);
-
-            if ((now - stateStartTime > 250) && (C || L || R)) {
-                stopMotors();
-                delay(200);
-                Serial.println("[LINE LOCKED] IR sensor caught black tape! Following line to destination...");
-                currentState = STATE_ESCORT_OUTBOUND;
-                lineLostActive = false;
-                postTelemetry("STATUS", ",\"action\":\"ESCORTING\"");
-                break;
-            }
-
-            if (now - stateStartTime >= TIME_SPIN_90) {
-                stopMotors();
-                delay(200);
-                Serial.println("[TIMEOUT] 90° spin timeout reached. Attempting line following...");
-                currentState = STATE_ESCORT_OUTBOUND;
-                lineLostActive = false;
-                postTelemetry("STATUS", ",\"action\":\"ESCORTING\"");
-            }
-            break;
-        }
-
-        // ---------- 3. ESCORT OUTBOUND (FOLLOW LINE TO ENDPOINT) ----------
+        // ---------- 2. ESCORT OUTBOUND (FOLLOW LINE TO ENDPOINT) ----------
         case STATE_ESCORT_OUTBOUND: {
             bool onLine = stepLineFollowing();
             if (!onLine) {
@@ -634,25 +598,25 @@ void loop() {
                 stopMotors();
                 stateStartTime = millis();
                 currentState = STATE_ENDPOINT_PAUSE;
-                Serial.println("\n[STEP 3] Reached endpoint (No more tape)! Arrived at destination.");
+                Serial.println("\n[STEP 2] Reached endpoint (No more tape)! Arrived at destination.");
                 postTelemetry("ARRIVED", ",\"dest\":\"Destination Endpoint\"");
             }
             break;
         }
 
-        // ---------- 4. DESTINATION PAUSE ----------
+        // ---------- 3. DESTINATION PAUSE ----------
         case STATE_ENDPOINT_PAUSE: {
             stopMotors();
-            if (now - stateStartTime >= 2000) { // 2s pause at destination
+            if (now - stateStartTime >= 2000) { // 2s destination pause
                 stateStartTime = millis();
                 currentState = STATE_SPIN_180;
-                Serial.println("[STEP 4] Spinning 180° to face return direction...");
+                Serial.println("[STEP 3] Spinning 180° to face return direction...");
                 postTelemetry("STATUS", ",\"action\":\"SPIN_180\"");
             }
             break;
         }
 
-        // ---------- 5. SPIN 180 DEGREES TO RETURN (SMART IR LOCK + DUAL US SAFETY) ----------
+        // ---------- 4. SPIN 180 DEGREES TO RETURN (WITH DUAL US SAFETY & LINE LOCK) ----------
         case STATE_SPIN_180: {
             int fDist = distanceCM(F_TRIG, F_ECHO);
             int bDist = distanceCM(B_TRIG, B_ECHO);
@@ -690,7 +654,7 @@ void loop() {
             break;
         }
 
-        // ---------- 6. ESCORT RETURN (FOLLOW LINE BACK TO START) ----------
+        // ---------- 5. ESCORT RETURN (FOLLOW LINE BACK TO START) ----------
         case STATE_ESCORT_RETURN: {
             bool onLine = stepLineFollowing();
             if (!onLine) {
