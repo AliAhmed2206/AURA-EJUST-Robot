@@ -4334,31 +4334,32 @@ const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';   // phone -> ESP32
 const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';   // ESP32 -> phone
 let bleDev = null, bleRx = null, bleBuf = '', nfcLearnMode = false, nfcBannerTimer = null;
 
-// Built-in + Custom Learned VIP NFC Cards (Clean Numbering: VIP Guest 1 .. 21, No Hardcoded Destinations)
+// Built-in + Custom Learned VIP NFC Cards (Sheet2 Official Guests + Replacements for Fukoda & Amr)
 const DEFAULT_VIP_CARDS = {
-  '53B80572420001': { name: 'VIP Guest 1',  arName: 'ضيف الشرف 1' },
-  '53B90572420001': { name: 'VIP Guest 2',  arName: 'ضيف الشرف 2' },
-  '53BA0572420001': { name: 'VIP Guest 3',  arName: 'ضيف الشرف 3' },
-  '53BB0572420001': { name: 'VIP Guest 4',  arName: 'ضيف الشرف 4' },
-  '53C00572420001': { name: 'VIP Guest 5',  arName: 'ضيف الشرف 5' },
-  '53C10572420001': { name: 'VIP Guest 6',  arName: 'ضيف الشرف 6' },
-  '53C20572420001': { name: 'VIP Guest 7',  arName: 'ضيف الشرف 7' },
-  '53C30572420001': { name: 'VIP Guest 8',  arName: 'ضيف الشرف 8' },
-  '53C80572420001': { name: 'VIP Guest 9',  arName: 'ضيف الشرف 9' },
-  '53C90572420001': { name: 'VIP Guest 10', arName: 'ضيف الشرف 10' },
-  '53CA0572420001': { name: 'VIP Guest 11', arName: 'ضيف الشرف 11' },
-  '53CB0572420001': { name: 'VIP Guest 12', arName: 'ضيف الشرف 12' },
-  '53D00572420001': { name: 'VIP Guest 13', arName: 'ضيف الشرف 13' },
-  '53D10572420001': { name: 'VIP Guest 14', arName: 'ضيف الشرف 14' },
-  '53D20572420001': { name: 'VIP Guest 15', arName: 'ضيف الشرف 15' },
-  '53D30572420001': { name: 'VIP Guest 16', arName: 'ضيف الشرف 16' },
-  '53D80572420001': { name: 'VIP Guest 17', arName: 'ضيف الشرف 17' },
-  '53D90572420001': { name: 'VIP Guest 18', arName: 'ضيف الشرف 18' },
-  '53DA0572420001': { name: 'VIP Guest 19', arName: 'ضيف الشرف 19' },
-  '53DB0572420001': { name: 'VIP Guest 20', arName: 'ضيف الشرف 20' },
-  '53E00572420001': { name: 'VIP Guest 21', arName: 'ضيف الشرف 21' },
+  '53D30572420001': { name: 'Prof. Ahmed Elsabagh', arName: 'الأستاذ الدكتور أحمد الصباغ' },
+  '53D80572420001': { name: 'Prof. Amr Eltawil',     arName: 'الأستاذ الدكتور عمرو الطويل' },
+  '53DA0572420001': { name: 'Prof. Fukoda',         arName: 'البروفيسور فوكودا' },
+  '53D90572420001': { name: 'Prof. Haitham El-Hussieny', arName: 'الدكتور هيثم الحسيني' },
+  '53DB0572420001': { name: 'Prof. Maha Elsabrouty', arName: 'الدكتورة مها السبروتي' },
+  '53C80572420001': { name: 'Prof. Ahmed M.R. Fath EL-Bab', arName: 'الدكتور أحمد فتح الباب' },
+  '53C30572420001': { name: 'Prof. Ayman Nada',      arName: 'الدكتور أيمن ندا' },
+  '53C10572420001': { name: 'Prof. Sameh Sherif',    arName: 'الدكتور سامح شريف' },
+  '53C90572420001': { name: 'Prof. Mohamed Nasef',   arName: 'الدكتور محمد ناصف' },
+  '53C20572420001': { name: 'Prof. Wael Khaireldin', arName: 'الدكتور وائل خير الدين' },
+  '53CA0572420001': { name: 'Prof. Mohamed Gouda',   arName: 'الدكتور محمد جودة' },
+  '53BB0572420001': { name: 'Prof. Mohamed Adel',    arName: 'الدكتور محمد عادل' },
+  '53D00572420001': { name: 'Prof. Ahmed Abd El-Malek', arName: 'الدكتور أحمد عبد المالك' },
+  // Fallbacks for remaining cards
+  '53B80572420001': { name: 'VIP Guest 14',  arName: 'ضيف الشرف 14' },
+  '53B90572420001': { name: 'VIP Guest 15',  arName: 'ضيف الشرف 15' },
+  '53BA0572420001': { name: 'VIP Guest 16',  arName: 'ضيف الشرف 16' },
+  '53C00572420001': { name: 'VIP Guest 17',  arName: 'ضيف الشرف 17' },
+  '53CB0572420001': { name: 'VIP Guest 18',  arName: 'ضيف الشرف 18' },
+  '53D10572420001': { name: 'VIP Guest 19',  arName: 'ضيف الشرف 19' },
+  '53D20572420001': { name: 'VIP Guest 20',  arName: 'ضيف الشرف 20' },
+  '53E00572420001': { name: 'VIP Guest 21',  arName: 'ضيف الشرف 21' },
   // Legacy simulation test UID
-  'A1:B2:C3:D4':   { name: 'VIP Guest 1',  arName: 'ضيف الشرف 1' }
+  'A1:B2:C3:D4':   { name: 'Prof. Ahmed Elsabagh', arName: 'الأستاذ الدكتور أحمد الصباغ' }
 };
 let vipCards = { ...DEFAULT_VIP_CARDS };
 try {

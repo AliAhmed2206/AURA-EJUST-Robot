@@ -786,6 +786,23 @@ def get_esp32_command(token: Optional[str] = None, request: Request = None):
             print(f"[ESP32 DISPATCH] Sent to ESP32: {item}")
             return {"cmd": item, "has_more": has_more}
     return {"cmd": "NONE", "has_more": False}
+# VIP Guest Registry Mapping (Sheet2 Official Guests + Replacements for Fukoda & Amr)
+VIP_REGISTRY = {
+    "53D30572420001": "Prof. Ahmed Elsabagh (President of E-JUST)",
+    "53D80572420001": "Prof. Amr Eltawil",
+    "53DA0572420001": "Prof. Fukoda",
+    "53D90572420001": "Prof. Haitham El-Hussieny",
+    "53DB0572420001": "Prof. Maha Elsabrouty",
+    "53C80572420001": "Prof. Ahmed M.R. Fath EL-Bab",
+    "53C30572420001": "Prof. Ayman Nada",
+    "53C10572420001": "Prof. Sameh Sherif",
+    "53C90572420001": "Prof. Mohamed Nasef",
+    "53C20572420001": "Prof. Wael Khaireldin",
+    "53CA0572420001": "Prof. Mohamed Gouda",
+    "53BB0572420001": "Prof. Mohamed Adel",
+    "53D00572420001": "Prof. Ahmed Abd El-Malek",
+}
+
 @app.post("/api/esp32/telemetry")
 async def post_esp32_telemetry(request: Request):
     """
@@ -814,6 +831,13 @@ async def post_esp32_telemetry(request: Request):
     if "dest" in body: esp32_state["dest"] = body["dest"]
     if "passed" in body: esp32_state["markers"] = body["passed"]
     if "state" in body: esp32_state["robot_state"] = body["state"]
+    if "guest" in body: esp32_state["guest"] = body["guest"]
+    if "name" in body: esp32_state["guest"] = body["name"]
+    
+    # VIP Guest Name Resolution from Registry
+    uid_clean = re.sub(r'[^A-Fa-f0-9]', '', str(body.get('uid', ''))).upper()
+    if uid_clean in VIP_REGISTRY:
+        esp32_state["guest"] = VIP_REGISTRY[uid_clean]
     
     print(f"[ESP32 TELEMETRY] {body}")
     return {"status": "ok", "received": True, "queued_cmds": len(esp32_cmd_queue)}

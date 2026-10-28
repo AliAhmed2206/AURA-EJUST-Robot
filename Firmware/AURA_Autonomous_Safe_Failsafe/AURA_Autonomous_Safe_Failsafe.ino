@@ -10,10 +10,13 @@
  *   - Ultrasonics:       Front (TRIG=19, ECHO=35) | Rear (TRIG=18, ECHO=34)
  *   - MFRC522 RC522:     SDA=5, RST=2, SCK=15, MISO=16, MOSI=17
  * 
+ * Continuous Serial Telemetry (Every 350ms):
+ *   Prints: [SENSORS] Front US, Rear US, IR [L C R], NFC Status, State, and Active VIP Name
+ * 
  * Autonomous Mission Cycle (Multi-Guest 15+ VIPs Rotation):
  *   1. [IDLE] Robot waits at startpoint for VIP NFC card tap.
  *   2. [TAP] Guest scans card -> Welcome message -> Spin 90° to align with black tape.
- *   3. [OUTBOUND] Follows black tape smoothly with ultrasonic obstacle safety (<15cm).
+ *   3. [OUTBOUND] Follows black tape smoothly with front/rear ultrasonic safety (<15cm).
  *   4. [ENDPOINT] Reaches end of tape -> Pauses 2s -> Spins 180° to face back.
  *   5. [RETURN] Follows line back to startpoint -> When tape ends, stops cleanly.
  *   6. [STANDBY] Returns to IDLE ready for the next guest to begin a new cycle!
@@ -67,41 +70,56 @@
 #define TIME_SPIN_180      2100  // ms to spin 180 degrees at endpoint to turn around
 #define OBSTACLE_DISTANCE  15    // Stop distance threshold (cm)
 #define LINE_LOST_MS       450   // ms without tape before declaring endpoint reached
+#define TELEMETRY_INTERVAL 350   // ms between serial telemetry prints
 
 // ======================================================================================
-// 3. 21 REGISTERED VIP GUEST CARDS
+// 3. REGISTERED VIP GUEST CARDS TABLE (Sheet2 + Official Replacements)
 // ======================================================================================
 struct VIPCard {
     const char* code;
+    const char* name;
     uint8_t id;
 };
 
 const VIPCard VIP_CARDS[] = {
-    {"53B80572420001", 1},
-    {"53B90572420001", 2},
-    {"53BA0572420001", 3},
-    {"53BB0572420001", 4},
-    {"53C00572420001", 5},
-    {"53C10572420001", 6},
-    {"53C20572420001", 7},
-    {"53C30572420001", 8},
-    {"53C80572420001", 9},
-    {"53C90572420001", 10},
-    {"53CA0572420001", 11},
-    {"53CB0572420001", 12},
-    {"53D00572420001", 13},
-    {"53D10572420001", 14},
-    {"53D20572420001", 15},
-    {"53D30572420001", 16},
-    {"53D80572420001", 17},
-    {"53D90572420001", 18},
-    {"53DA0572420001", 19},
-    {"53DB0572420001", 20},
-    {"53E00572420001", 21}
+    {"53D30572420001", "Ahmed Elsabagh", 1},
+    {"53D80572420001", "Amr Eltawil", 2},
+    {"53DA0572420001", "Fukoda", 3},
+    {"53D90572420001", "Haitham El-Hussieny", 4},
+    {"53DB0572420001", "Maha Elsabrouty", 5},
+    {"53C80572420001", "Ahmed M.R. Fath EL-Bab", 6},
+    {"53C30572420001", "Ayman Nada", 7},
+    {"53C10572420001", "Sameh Sherif", 8},
+    {"53C90572420001", "Mohamed Nasef", 9},
+    {"53C20572420001", "Wael Khaireldin", 10},
+    {"53CA0572420001", "Mohamed Gouda", 11},
+    {"53BB0572420001", "Mohamed Adel", 12},
+    {"53D00572420001", "Ahmed Abd El-Malek", 13},
+    // Fallback entries for additional/unassigned cards in pack
+    {"53B80572420001", "VIP Guest 14", 14},
+    {"53B90572420001", "VIP Guest 15", 15},
+    {"53BA0572420001", "VIP Guest 16", 16},
+    {"53C00572420001", "VIP Guest 17", 17},
+    {"53CB0572420001", "VIP Guest 18", 18},
+    {"53D10572420001", "VIP Guest 19", 19},
+    {"53D20572420001", "VIP Guest 20", 20},
+    {"53E00572420001", "VIP Guest 21", 21}
 };
 const int TOTAL_VIP_CARDS = sizeof(VIP_CARDS) / sizeof(VIP_CARDS[0]);
 
 MFRC522 rfid(NFC_SS_PIN, NFC_RST_PIN);
+
+// Helper to normalize card UIDs (strip colons, dashes, and whitespace)
+String normalizeUid(const String& raw) {
+    String clean = "";
+    for (size_t i = 0; i < raw.length(); i++) {
+        char c = raw[i];
+        if (c != ':' && c != '-' && c != ' ') {
+            clean += (char)toupper(c);
+        }
+    }
+    return clean;
+}
 
 // ======================================================================================
 // 4. ROBOT STATES & TIMERS
@@ -120,9 +138,22 @@ EscortState currentState = STATE_IDLE;
 unsigned long stateStartTime = 0;
 unsigned long lineLostStartTime = 0;
 unsigned long lastNfcScanTime = 0;
-unsigned long lastStatusPrint = 0;
+unsigned long lastTelemetryPrint = 0;
 bool lineLostActive = false;
 int activeGuestId = 0;
+String activeGuestName = "NONE";
+
+const char* stateStr(EscortState s) {
+    switch (s) {
+        case STATE_IDLE:            return "IDLE";
+        case STATE_SPIN_90:         return "SPIN_90";
+        case STATE_ESCORT_OUTBOUND: return "OUTBOUND";
+        case STATE_ENDPOINT_PAUSE:  return "ENDPOINT_PAUSE";
+        case STATE_SPIN_180:        return "SPIN_180";
+        case STATE_ESCORT_RETURN:   return "RETURN";
+        default:                    return "UNKNOWN";
+    }
+}
 
 // ======================================================================================
 // 5. MOTOR PWM DRIVER (ESP32 Core 2.x & 3.x Universal)
@@ -164,70 +195,88 @@ void stopMotors() {
 }
 
 // ======================================================================================
-// 6. ULTRASONIC SENSOR
+// 6. ULTRASONIC SENSOR (cm)
 // ======================================================================================
-int readDistanceCM(int trigPin, int echoPin) {
+int distanceCM(int trigPin, int echoPin) {
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
     digitalWrite(trigPin, HIGH);
     delayMicroseconds(10);
     digitalWrite(trigPin, LOW);
 
-    unsigned long duration = pulseIn(echoPin, HIGH, 15000); // 15ms timeout ~2.5m
+    unsigned long duration = pulseIn(echoPin, HIGH, 18000); // 18ms timeout ~3 meters
     if (duration == 0) return 999;
     return duration / 58;
 }
 
+// Backward-compatibility alias
+int readDistanceCM(int trigPin, int echoPin) {
+    return distanceCM(trigPin, echoPin);
+}
+
 // ======================================================================================
-// 7. LINE TRACKING STEP
+// 7. LINE TRACKING STEP & SAFETY LOGIC
 // ======================================================================================
 // Returns true while line is active; returns false when tape is lost (endpoint)
 bool stepLineFollowing() {
-    int frontDist = readDistanceCM(F_TRIG, F_ECHO);
+    // 1. Front Obstacle Safety Check
+    int frontDist = distanceCM(F_TRIG, F_ECHO);
     if (frontDist < OBSTACLE_DISTANCE) {
         stopMotors();
-        Serial.printf("[SAFETY] Obstacle ahead (%d cm)! Paused...\n", frontDist);
-        return true; // Still on line, just temporarily stopped for safety
+        Serial.printf("[FRONT SAFETY] Obstacle ahead (%d cm < %d cm)! Paused...\n", frontDist, OBSTACLE_DISTANCE);
+        return true; // Still on line, waiting for obstacle to clear
     }
 
+    // 2. Read 3-Channel TCRT5000 IR Line Sensors (ON_LINE = LOW on black tape)
     bool L = (digitalRead(IR_L) == ON_LINE);
     bool C = (digitalRead(IR_C) == ON_LINE);
     bool R = (digitalRead(IR_R) == ON_LINE);
 
-    unsigned long now = millis();
-
-    // Check if line is completely lost (no sensor sees black tape)
-    if (!L && !C && !R) {
-        if (!lineLostActive) {
-            lineLostActive = true;
-            lineLostStartTime = now;
-        } else if (now - lineLostStartTime >= LINE_LOST_MS) {
-            // No tape for more than threshold -> Endpoint reached!
-            stopMotors();
-            lineLostActive = false;
-            return false; // Reached end of tape
-        }
-        // Creep forward slowly to confirm end of tape
-        setMotors(SPEED_CRUISE / 2, SPEED_CRUISE / 2);
-        return true;
-    } else {
+    // 3. User-Specified Compound Line Tracking & Rear Safety Logic
+    if (!L && C && !R) {
+        // Line centered directly under center sensor -> cruise forward
+        setMotors(SPEED_CRUISE, SPEED_CRUISE);
         lineLostActive = false;
     }
-
-    // Line Tracking Steer Logic
-    if (C && !L && !R) {
-        // Line centered
-        setMotors(SPEED_CRUISE, SPEED_CRUISE);
-    } else if (L && !R) {
-        // Drifting right -> Steer left
+    else if ((L && !R && C) || (L && !R && !C)) {
+        // Line under left sensor (drifting right) -> steer left
         setMotors(SPEED_CRUISE / 2, SPEED_TURN);
-    } else if (R && !L) {
-        // Drifting left -> Steer right
+        lineLostActive = false;
+    }
+    else if ((R && !L && C) || (R && !L && !C)) {
+        // Line under right sensor (drifting left) -> steer right
         setMotors(SPEED_TURN, SPEED_CRUISE / 2);
-    } else if (L && C && R) {
-        // Cross marker / broad tape -> cruise forward smoothly
+        lineLostActive = false;
+    }
+    else if (L && C && R) {
+        // All sensors on black tape (station line / wide cross marker) -> cruise smoothly
         setMotors(SPEED_CRUISE, SPEED_CRUISE);
-    } else {
+        lineLostActive = false;
+    }
+    else if (!L && !C && !R) {
+        // No line detected under any sensor! Check rear clearance
+        if (distanceCM(B_TRIG, B_ECHO) > OBSTACLE_DISTANCE) {
+            // Safe clearance behind robot (> OBSTACLE_DISTANCE)
+            if (!lineLostActive) {
+                lineLostActive = true;
+                lineLostStartTime = millis();
+            } else if (millis() - lineLostStartTime >= LINE_LOST_MS) {
+                // Confirmed end of black tape reached safely!
+                stopMotors();
+                lineLostActive = false;
+                return false; // Reached endpoint!
+            }
+            // Creep forward slowly to verify if tape really ended
+            setMotors(SPEED_CRUISE / 2, SPEED_CRUISE / 2);
+        } else {
+            // Obstacle detected behind robot (<= OBSTACLE_DISTANCE)
+            stopMotors();
+            Serial.printf("[REAR SAFETY] Obstacle detected behind (%d cm <= %d cm)! Motors halted.\n",
+                          distanceCM(B_TRIG, B_ECHO), OBSTACLE_DISTANCE);
+        }
+    }
+    else {
+        // Fallback smooth drive
         setMotors(SPEED_CRUISE, SPEED_CRUISE);
     }
 
@@ -255,12 +304,19 @@ bool checkNfcTap() {
     rfid.PICC_HaltA();
     rfid.PCD_StopCrypto1();
 
-    Serial.print("\n>>> [NFC Scanned] Card Code: ");
-    Serial.println(uidStr);
+    // Format with colons for clean Serial display (e.g. 53:DA:05:72:42:00:01)
+    String formattedUid = "";
+    for (size_t i = 0; i < uidStr.length(); i++) {
+        formattedUid += uidStr[i];
+        if (i % 2 == 1 && i < uidStr.length() - 1) formattedUid += ":";
+    }
+
+    Serial.println("\n=======================================================");
+    Serial.printf(">>> [NFC SCANNED] Card UID: %s (%s)\n", formattedUid.c_str(), uidStr.c_str());
 
     int matchedIdx = -1;
     for (int i = 0; i < TOTAL_VIP_CARDS; i++) {
-        if (uidStr.equalsIgnoreCase(VIP_CARDS[i].code)) {
+        if (uidStr.equalsIgnoreCase(normalizeUid(VIP_CARDS[i].code))) {
             matchedIdx = i;
             break;
         }
@@ -268,16 +324,41 @@ bool checkNfcTap() {
 
     if (matchedIdx >= 0) {
         activeGuestId = VIP_CARDS[matchedIdx].id;
-        Serial.printf("[NFC VALID] Welcome VIP Guest %d! Starting escort mission...\n", activeGuestId);
+        activeGuestName = VIP_CARDS[matchedIdx].name;
+        Serial.printf(">>> [VIP VERIFIED] Welcome %s (Guest ID: %d)!\n", activeGuestName.c_str(), activeGuestId);
+        Serial.println("=======================================================\n");
         return true;
     } else {
-        Serial.printf("[NFC UNKNOWN] Unregistered Card: %s (Access Denied)\n", uidStr.c_str());
+        Serial.printf(">>> [NFC UNKNOWN] Unregistered Card: %s (Access Denied)\n", formattedUid.c_str());
+        Serial.println("=======================================================\n");
         return false;
     }
 }
 
 // ======================================================================================
-// 9. SETUP
+// 9. CONTINUOUS SENSOR & NFC TELEMETRY
+// ======================================================================================
+void printSensorTelemetry() {
+    int fDist = distanceCM(F_TRIG, F_ECHO);
+    int bDist = distanceCM(B_TRIG, B_ECHO);
+
+    bool L = (digitalRead(IR_L) == ON_LINE);
+    bool C = (digitalRead(IR_C) == ON_LINE);
+    bool R = (digitalRead(IR_R) == ON_LINE);
+
+    byte v = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+    const char* nfcStatus = (v == 0x00 || v == 0xFF) ? "OFFLINE" : "READY";
+
+    Serial.printf("[SENSORS] F_US: %3d cm | B_US: %3d cm | IR: [L:%d C:%d R:%d] | NFC: %-7s | State: %-14s | VIP: %s\n",
+                  fDist, bDist,
+                  L ? 1 : 0, C ? 1 : 0, R ? 1 : 0,
+                  nfcStatus,
+                  stateStr(currentState),
+                  activeGuestName.c_str());
+}
+
+// ======================================================================================
+// 10. SETUP
 // ======================================================================================
 void setup() {
     Serial.begin(115200);
@@ -338,22 +419,22 @@ void setup() {
 }
 
 // ======================================================================================
-// 10. MAIN AUTONOMOUS LOOP
+// 11. MAIN AUTONOMOUS LOOP
 // ======================================================================================
 void loop() {
     unsigned long now = millis();
 
+    // 1. Continuous Live Serial Monitor Telemetry
+    if (now - lastTelemetryPrint >= TELEMETRY_INTERVAL) {
+        lastTelemetryPrint = now;
+        printSensorTelemetry();
+    }
+
+    // 2. Autonomous Escort Mission State Machine
     switch (currentState) {
 
         // ---------- 1. IDLE: WAITING FOR GUEST CARD ----------
         case STATE_IDLE: {
-            // Periodic Status Print every 3s
-            if (now - lastStatusPrint >= 3000) {
-                lastStatusPrint = now;
-                int frontDist = readDistanceCM(F_TRIG, F_ECHO);
-                Serial.printf("[STANDBY] Waiting for VIP card tap... (Front sonar: %d cm)\n", frontDist);
-            }
-
             if (checkNfcTap()) {
                 stopMotors();
                 delay(800); // 800ms greeting pause
@@ -424,6 +505,8 @@ void loop() {
             if (!onLine) {
                 // Returned back to startpoint where tape ends!
                 stopMotors();
+                activeGuestId = 0;
+                activeGuestName = "NONE";
                 currentState = STATE_IDLE;
                 Serial.println("\n[CYCLE COMPLETE] Back at startpoint! Ready for next VIP guest.\n");
             }
