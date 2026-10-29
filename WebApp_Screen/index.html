@@ -5634,7 +5634,7 @@ setInterval(async () => {
           if (data.state.markers) hwState.markers = data.state.markers;
           if (data.state.event && data.state.event !== 'NONE') {
             if (data.state.event === 'NFC_TAP' && data.state.uid && data.state.uid !== 'NONE' && data.state.uid !== hwState.lastNfcUid) {
-              onEsp32({ event: 'NFC_TAP', uid: data.state.uid });
+              onEsp32({ event: 'NFC_TAP', uid: data.state.uid, name: data.state.guest, valid: true });
             } else if (data.state.event === 'ARRIVED' && hwState.state !== 'ARRIVED') {
               onEsp32({ event: 'ARRIVED', dest: data.state.dest || 'Theatre' });
             } else if (data.state.event === 'OBSTACLE' && !hwState.lastObstacleActive) {
@@ -5654,7 +5654,7 @@ setInterval(async () => {
       updateHwUi();
     }
   } catch (e) {}
-}, 2000);
+}, 400);
 
 window.AURA = { setEmotion, setFaceStyle, speak, handleTurn, sendBle, onEsp32, connectSerial, toggleSensorHud, toggleSimTelemetry, registerCardUid, bargeIn, gaze, history, hwState, vipCards, get state() { return { emotion, isSpeaking, thinking, awake, style: cfg.style, hwState }; } };
 </script>
