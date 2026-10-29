@@ -12,7 +12,7 @@ const char* WIFI_SSID       = "Ali";                 // Hotspot name
 const char* WIFI_PASSWORD   = "12345679";            // Hotspot password
 const char* AURA_AUTH_TOKEN = "AURA-EJUST-VIP-2026-TOKEN";
 
-const char* SERVER_BASE_URL = "http://10.10.224.169:8080";
+const char* SERVER_BASE_URL = "http://10.103.194.178:8080";
 String currentServerUrl     = SERVER_BASE_URL;
 
 // ======================================================================================
