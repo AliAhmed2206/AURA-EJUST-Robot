@@ -12,13 +12,19 @@
 #define IR_R 22
 
 // ---------- L293D / L298N MOTOR DRIVER ----------
-#define IN1 14
-#define IN2 27
+#define L_IN1 14
+#define L_IN2 27
 #define L_EN  25
 
-#define IN3 26
-#define IN4 33
+#define R_IN1 26
+#define R_IN2 33
 #define R_EN  13
+
+// Backward-compatibility aliases
+#define IN1 L_IN1
+#define IN2 L_IN2
+#define IN3 R_IN1
+#define IN4 R_IN2
 
 // ---------- FRONT ULTRASONIC ----------
 #define F_TRIG 18
@@ -39,9 +45,14 @@
 // 2. SETTINGS
 // ======================================================================================
 #define ON_LINE           LOW // 1 on Black Tape, 0 on White Floor
-#define SPEED             170
-#define TURN_SPEED        200
-#define TIME_SPIN_90      1000 // Milliseconds to spin 90 degrees (adjust for floor/battery)
+#define L_SPEED           170 // Reduced speed for faster left motor
+#define R_SPEED           150 // Higher speed for slower right motor
+#define SPEED             170 // General forward reference
+#define TURN_SPEED        200 // Turning speed
+#define TIME_SPIN_90      1500 // Calibrate for the initial departure turn
+#define TIME_SPIN_180     1500 // CALIBRATE: actual 180-degree pivot turn time
+#define THEATRE_WAIT_MS   10000 // Wait 10 seconds at the theatre
+#define MARKER_CONFIRM_MS 50   // Require all three IR sensors on black briefly
 #define OBSTACLE_DISTANCE 15
 
 // ======================================================================================
@@ -83,6 +94,16 @@ const int TOTAL_VIP_CARDS = sizeof(VIP_CARDS) / sizeof(VIP_CARDS[0]);
 MFRC522 rfid(NFC_SS_PIN, NFC_RST_PIN);
 
 bool robotRunning = false;
+bool firstDeparture = true;
+bool markerArmed = false;
+unsigned long markerCandidateSince = 0;
+
+enum TripState {
+  GOING_TO_THEATRE,
+  WAITING_AT_THEATRE,
+  RETURNING_TO_START
+};
+TripState tripState = GOING_TO_THEATRE;
 int activeGuestId = 0;
 String activeGuestName = "NONE";
 unsigned long lastNfcScanTime = 0;
@@ -99,90 +120,89 @@ String normalizeUid(const String& raw) {
 }
 
 // ======================================================================================
-// 4. MOTOR CONTROL
+// 4. MOTOR CONTROL (Tested L298N + Right Motor Polarity Reversed)
 // ======================================================================================
-#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
-void setupPWM(int pin) {
-  ledcAttach(pin, 1000, 8);
-}
-void motorPWM(int pin, int speed) {
-  ledcWrite(pin, constrain(speed, 0, 255));
-}
-#else
-void setupPWM(int pin) {
-  int ch = (pin == L_EN) ? 0 : 1;
-  ledcSetup(ch, 1000, 8);
-  ledcAttachPin(pin, ch);
-}
-void motorPWM(int pin, int speed) {
-  int ch = (pin == L_EN) ? 0 : 1;
-  ledcWrite(ch, constrain(speed, 0, 255));
-}
-#endif
 
-// Positive = forward, negative = reverse
-void motor(int in1, int in2, int en, int speed) {
-  speed = constrain(speed, -255, 255);
-
-  digitalWrite(in1, speed > 0);
-  digitalWrite(in2, speed < 0);
-
-  motorPWM(en, abs(speed));
+// Apply separate speeds to compensate for faster left motor
+void setSpeed() {
+  analogWrite(L_EN, L_SPEED);
+  analogWrite(R_EN, R_SPEED);
 }
 
+// Apply turn speeds
+void setTurnSpeed() {
+  analogWrite(L_EN, TURN_SPEED);
+  analogWrite(R_EN, TURN_SPEED);
+}
+
+// Forward: both wheels drive forward
 void forward() {
-  motorPWM(L_EN, SPEED);
-  motorPWM(R_EN, SPEED);
+  setSpeed();
 
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
+  digitalWrite(L_IN1, LOW);
+  digitalWrite(L_IN2, HIGH);
 
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
+  // Reversed right motor (LOW / HIGH drives forward)
+  digitalWrite(R_IN1, LOW);
+  digitalWrite(R_IN2, HIGH);
 }
 
+// Backward: both wheels drive backward
 void backward() {
-  motorPWM(L_EN, SPEED);
-  motorPWM(R_EN, SPEED);
+  setSpeed();
 
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, HIGH);
+  digitalWrite(L_IN1, HIGH);
+  digitalWrite(L_IN2, LOW);
 
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, HIGH);
+  // Reversed right motor (HIGH / LOW drives backward)
+  digitalWrite(R_IN1, HIGH);
+  digitalWrite(R_IN2, LOW);
 }
 
-void left() {
-  motorPWM(L_EN, TURN_SPEED);
-  motorPWM(R_EN, TURN_SPEED);
-
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, HIGH);
-
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
-}
-
+// Turn right: Left wheel forward, Right wheel backward
 void right() {
-  motorPWM(L_EN, TURN_SPEED);
-  motorPWM(R_EN, TURN_SPEED);
+  setTurnSpeed();
 
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
+  digitalWrite(L_IN1, LOW);
+  digitalWrite(L_IN2, HIGH);
 
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, HIGH);
+  // Reversed right motor (HIGH / LOW drives backward)
+  digitalWrite(R_IN1, LOW);
+  digitalWrite(R_IN2, LOW);
 }
 
+// Turn left: Left wheel backward, Right wheel forward
+void left() {
+  setTurnSpeed();
+
+  digitalWrite(L_IN1, LOW);
+  digitalWrite(L_IN2, LOW);
+
+  // Reversed right motor (LOW / HIGH drives forward)
+  digitalWrite(R_IN1, LOW);
+  digitalWrite(R_IN2, HIGH);
+}
+
+// Pivot in place: left wheel backward, right wheel forward.
+// Calibrate TIME_SPIN_180 on the actual robot and floor.
+void spin180() {
+  setTurnSpeed();
+  digitalWrite(L_IN1, HIGH);
+  digitalWrite(L_IN2, LOW);
+  digitalWrite(R_IN1, LOW);
+  digitalWrite(R_IN2, HIGH);
+}
+
+// Stop both motors
 void stop() {
-  motorPWM(L_EN, 0);
-  motorPWM(R_EN, 0);
+  digitalWrite(L_IN1, LOW);
+  digitalWrite(L_IN2, LOW);
 
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, LOW);
+  digitalWrite(R_IN1, LOW);
+  digitalWrite(R_IN2, LOW);
 
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, LOW);
+  analogWrite(L_EN, 0);
+  analogWrite(R_EN, 0);
 }
 
 // ======================================================================================
@@ -209,7 +229,7 @@ int distanceCM(int trig, int echo) {
 // 6. NFC CARD SCAN (START TRIGGER)
 // ======================================================================================
 bool checkNfcTap() {
-  if (!rfid.PICC_IsNewCardPresent() && !rfid.PICC_ReadCardSerial()) return false;
+  if (!rfid.PICC_IsNewCardPresent()) return false;
   if (!rfid.PICC_ReadCardSerial()) return false;
 
   unsigned long now = millis();
@@ -273,13 +293,15 @@ void setup() {
   pinMode(IR_R, INPUT);
 
   // Initialize Motors
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
+  pinMode(L_IN1, OUTPUT);
+  pinMode(L_IN2, OUTPUT);
+  pinMode(L_EN, OUTPUT);
 
-  setupPWM(L_EN);
-  setupPWM(R_EN);
+  pinMode(R_IN1, OUTPUT);
+  pinMode(R_IN2, OUTPUT);
+  pinMode(R_EN, OUTPUT);
+
+  stop();
 
   // Initialize Ultrasonics
   pinMode(F_TRIG, OUTPUT);
@@ -321,108 +343,151 @@ void setup() {
 }
 
 // ======================================================================================
-// 8. MAIN LOOP
+// 8. MAIN LOOP: OUTBOUND -> THEATRE WAIT -> 180-DEGREE TURN -> RETURN
+// Track: one continuous black line, with a perpendicular black crossbar at each endpoint.
+// Endpoint marker = all three line sensors detect black at the same time.
 // ======================================================================================
 void loop() {
-  // Continuous Live Telemetry in Serial Monitor (Every 300ms)
+  // Live sensor telemetry (every 300 ms)
   static unsigned long lastPrint = 0;
   if (millis() - lastPrint >= 300) {
     lastPrint = millis();
-
     int fDist = distanceCM(F_TRIG, F_ECHO);
     int bDist = distanceCM(B_TRIG, B_ECHO);
-
     bool L = digitalRead(IR_L) == ON_LINE;
     bool C = digitalRead(IR_C) == ON_LINE;
     bool R = digitalRead(IR_R) == ON_LINE;
-
     byte v = rfid.PCD_ReadRegister(MFRC522::VersionReg);
     const char* nfcStatus = (v == 0x00 || v == 0xFF) ? "OFFLINE" : "READY";
-
-    Serial.printf("[SENSORS] Front: %3d cm | Back: %3d cm | IR: [L:%d C:%d R:%d] | NFC: %-7s | Robot: %-7s | VIP: %s\n",
-                  fDist, bDist,
-                  L ? 1 : 0, C ? 1 : 0, R ? 1 : 0,
-                  nfcStatus,
-                  robotRunning ? "RUNNING" : "STANDBY",
-                  activeGuestName.c_str());
+    const char* stateName = !robotRunning ? "STANDBY" :
+      (tripState == GOING_TO_THEATRE ? "OUTBOUND" :
+       tripState == WAITING_AT_THEATRE ? "THEATRE_WAIT" : "RETURNING");
+    Serial.printf("[SENSORS] Front:%3d cm | Back:%3d cm | IR:[L:%d C:%d R:%d] | NFC:%-7s | State:%-12s | VIP:%s\n",
+                  fDist, bDist, L ? 1 : 0, C ? 1 : 0, R ? 1 : 0,
+                  nfcStatus, stateName, activeGuestName.c_str());
   }
 
-  // 1. NFC Scan Gate: Waits for VIP Card tap to start
+  // At the entrance, wait for a registered guest card.
   if (!robotRunning) {
     stop();
     if (checkNfcTap()) {
-      Serial.println("[START] Card verified! Delaying 2 seconds...");
-      stop();
-      delay(2000); // 1. Immediate 2-second delay after scanning
+      Serial.printf("[START] VIP %s verified. Starting trip.\n", activeGuestName.c_str());
+      delay(2000);
 
-      Serial.println("[START] Turning 90 degrees...");
-      // 2. Turn 90 degrees (Clockwise. If you need counter-clockwise, use: -TURN_SPEED, TURN_SPEED)
-      unsigned long t0 = millis();
-      left();
-      while (millis() - t0 < TIME_SPIN_90) {
-        // If center IR catches black tape during the turn, lock onto line immediately
-        if (millis() - t0 > 300 && digitalRead(IR_C) == ON_LINE) {
-          Serial.println("[LINE LOCKED] Center IR caught black tape during 90° turn!");
-          break;
+      // Keep the original initial 90-degree departure turn only for the first trip.
+      // After returning, the robot is already aligned with the same line.
+      if (firstDeparture) {
+        Serial.println("[START] Initial departure turn...");
+        unsigned long t0 = millis();
+        left();
+        while (millis() - t0 < TIME_SPIN_90) {
+          if (millis() - t0 > 300 && digitalRead(IR_C) == ON_LINE) break;
+          delay(10);
         }
-        delay(10);
+        stop();
+        delay(200);
+        firstDeparture = false;
       }
-      stop();
-      delay(200);
 
-      // 3. Normal line follower active until three IRs read 1s
-      Serial.println("[START] Normal line follower active until three IRs read 1s (L & C & R)...");
+      tripState = GOING_TO_THEATRE;
+      markerArmed = false; // Ignore the start crossbar until the robot has cleared it.
+      markerCandidateSince = 0;
       robotRunning = true;
+      Serial.println("[OUTBOUND] Following line to theatre...");
     }
     delay(10);
     return;
   }
 
-
-  // 2. Stop when an obstacle is detected in front
+  // Safety stop for a nearby obstacle. The trip state is retained so it can resume.
   if (distanceCM(F_TRIG, F_ECHO) < OBSTACLE_DISTANCE) {
     stop();
     return;
   }
 
-  // 3. Read IR sensors (1 = Black Tape, 0 = White Floor)
   bool L = digitalRead(IR_L) == ON_LINE;
-  bool C = digitalRead(IR_C) == ON_LINE; // 1 in middle is responsible for the perfect line
+  bool C = digitalRead(IR_C) == ON_LINE;
   bool R = digitalRead(IR_R) == ON_LINE;
+  bool allBlack = L && C && R;
 
-  // 4. Follow the line (User's Exact Verified Logic)
-  if (!L && C && !R) {
-    // Center sensor detects the line -> Cruise forward straight!
-    forward();
-  }
-  else if ((L && !R && C) || (L && !R && !C)) {
-    // Line is on the left -> Steer left
-    left();
-  }
-  else if ((R && !L && C) || (R && !L && !C)) {
-    // Line is on the right -> Steer right
-    right();
-  }
-  else if (L && C && R) {
-    // All sensors detect the line -> Reached destination marker! Stop and wait for next guest!
+  // At the theatre: stop for guests, then turn around and return on the same line.
+  if (tripState == WAITING_AT_THEATRE) {
     stop();
-    Serial.println("\n[DESTINATION] Cross line detected (L & C & R)! Arrived at endpoint.");
-    Serial.println("[STANDBY] Ready for next VIP guest card tap!\n");
-    robotRunning = false;
-  }
-  else if (!L && !C && !R) {
-    // Line lost: reverse only if the rear is clear
+    Serial.println("[THEATRE] Arrived. Waiting for guests to exit...");
+    delay(THEATRE_WAIT_MS);
+
+    Serial.println("[RETURN] Pivoting approximately 180 degrees...");
+    spin180();
+    delay(TIME_SPIN_180);
     stop();
-    if (distanceCM(B_TRIG, B_ECHO) > OBSTACLE_DISTANCE) {
-      backward();
-      delay(250);
-      stop();
+    delay(250);
+
+    tripState = RETURNING_TO_START;
+    markerArmed = false; // Ignore the theatre crossbar until sensors clear it.
+    markerCandidateSince = 0;
+    Serial.println("[RETURN] Following the same line back to the entrance...");
+    return;
+  }
+
+  // Marker lockout: after starting or turning around, move off the crossbar before
+  // allowing another endpoint marker to be recognized.
+  if (!markerArmed) {
+    if (!allBlack) {
+      markerArmed = true;
+      markerCandidateSince = 0;
+    } else {
+      // Move forward off the crossbar; do not treat it as the next endpoint.
+      forward();
+      delay(10);
+      return;
     }
   }
-  else {
-    // Other sensor combinations
+
+  // Confirm a crossbar for MARKER_CONFIRM_MS to reduce false detections.
+  if (allBlack) {
+    if (markerCandidateSince == 0) markerCandidateSince = millis();
+    if (millis() - markerCandidateSince >= MARKER_CONFIRM_MS) {
+      stop();
+      markerCandidateSince = 0;
+
+      if (tripState == GOING_TO_THEATRE) {
+        Serial.println("[THEATRE] Crossbar detected. Stopping at theatre.");
+        tripState = WAITING_AT_THEATRE;
+      } else if (tripState == RETURNING_TO_START) {
+        Serial.println("[START] Entrance crossbar detected. Trip complete.");
+        // Face the theatre again so the next guest's trip can use the same line.
+        Serial.println("[START] Turning 180 degrees to face the theatre for the next trip...");
+        spin180();
+        delay(TIME_SPIN_180);
+        stop();
+        Serial.println("[STANDBY] Ready for the next registered guest card.\n");
+        robotRunning = false;
+        markerArmed = false;
+      }
+      return;
+    }
+    // Keep moving very slowly while confirming the marker.
+    forward();
+    delay(10);
+    return;
+  } else {
+    markerCandidateSince = 0;
+  }
+
+  // Normal three-sensor line following.
+  if (!L && C && !R) {
+    forward();
+  } else if (L && !R) {
+    left();
+  } else if (R && !L) {
+    right();
+  } else if (!L && !C && !R) {
+    // Line lost: stop rather than driving blindly off the route.
+    stop();
+  } else {
     forward();
   }
 
   delay(10);
 }
+ 

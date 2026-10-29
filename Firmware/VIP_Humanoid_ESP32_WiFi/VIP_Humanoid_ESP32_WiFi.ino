@@ -49,12 +49,13 @@ String currentServerUrl     = SERVER_BASE_URL;
 #define NFC_MOSI_PIN  17    // RC522 MOSI     -> TX2
 
 // ======================================================================================
-// 3. SETTINGS
+// 3. SETTINGS & MOTOR CALIBRATION (USER TESTED VALUES)
 // ======================================================================================
 #define ON_LINE           HIGH // 1 on Black Tape, 0 on White Floor
-#define SPEED             170
-#define TURN_SPEED        200
-#define OBSTACLE_DISTANCE 15
+#define L_SPEED           170  // Reduced speed for faster left motor
+#define R_SPEED           200  // Higher speed for slower right motor
+#define TURN_SPEED        200  // Confident pivot turning
+#define OBSTACLE_DISTANCE 15   // Safety brake threshold in cm
 
 // ======================================================================================
 // 4. REGISTERED VIP GUEST CARDS TABLE (Sheet2 + Official Replacements)
@@ -112,44 +113,80 @@ String normalizeUid(const String& raw) {
 }
 
 // ======================================================================================
-// 5. MOTOR CONTROL
+// 5. MOTOR CONTROL (USER-TESTED SPEEDS & INVERTED RIGHT MOTOR POLARITY)
 // ======================================================================================
-#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
-void setupPWM(int pin) {
-  ledcAttach(pin, 1000, 8);
-}
-void motorPWM(int pin, int speed) {
-  ledcWrite(pin, constrain(speed, 0, 255));
-}
-#else
-void setupPWM(int pin) {
-  int ch = (pin == L_EN) ? 0 : 1;
-  ledcSetup(ch, 1000, 8);
-  ledcAttachPin(pin, ch);
-}
-void motorPWM(int pin, int speed) {
-  int ch = (pin == L_EN) ? 0 : 1;
-  ledcWrite(ch, constrain(speed, 0, 255));
-}
-#endif
-
-// Positive = forward, negative = reverse
-void motor(int in1, int in2, int en, int speed) {
-  speed = constrain(speed, -255, 255);
-
-  digitalWrite(in1, speed > 0);
-  digitalWrite(in2, speed < 0);
-
-  motorPWM(en, abs(speed));
+void setSpeed() {
+  analogWrite(L_EN, L_SPEED);
+  analogWrite(R_EN, R_SPEED);
 }
 
-void moveRobot(int left, int right) {
-  motor(L_IN1, L_IN2, L_EN, left);
-  motor(R_IN1, R_IN2, R_EN, right);
+void setTurnSpeed() {
+  analogWrite(L_EN, TURN_SPEED);
+  analogWrite(R_EN, TURN_SPEED);
+}
+
+// Stop both motors immediately
+void stopMotors() {
+  digitalWrite(L_IN1, LOW);
+  digitalWrite(L_IN2, LOW);
+
+  digitalWrite(R_IN1, LOW);
+  digitalWrite(R_IN2, LOW);
+
+  analogWrite(L_EN, 0);
+  analogWrite(R_EN, 0);
 }
 
 void stopRobot() {
-  moveRobot(0, 0);
+  stopMotors();
+}
+
+// Forward: Both wheels drive forward straight (Right motor polarity reversed)
+void forward() {
+  setSpeed();
+
+  digitalWrite(L_IN1, HIGH);
+  digitalWrite(L_IN2, LOW);
+
+  // Reversed right motor wiring
+  digitalWrite(R_IN1, LOW);
+  digitalWrite(R_IN2, HIGH);
+}
+
+// Backward: Both wheels reverse safely
+void backward() {
+  setSpeed();
+
+  digitalWrite(L_IN1, LOW);
+  digitalWrite(L_IN2, HIGH);
+
+  // Reversed right motor wiring
+  digitalWrite(R_IN1, HIGH);
+  digitalWrite(R_IN2, LOW);
+}
+
+// Pivot Turn Right: Left forward, Right backward
+void right() {
+  setTurnSpeed();
+
+  digitalWrite(L_IN1, HIGH);
+  digitalWrite(L_IN2, LOW);
+
+  // Reversed right motor wiring: backward = HIGH, LOW
+  digitalWrite(R_IN1, HIGH);
+  digitalWrite(R_IN2, LOW);
+}
+
+// Pivot Turn Left: Left backward, Right forward
+void left() {
+  setTurnSpeed();
+
+  digitalWrite(L_IN1, LOW);
+  digitalWrite(L_IN2, HIGH);
+
+  // Reversed right motor wiring: forward = LOW, HIGH
+  digitalWrite(R_IN1, LOW);
+  digitalWrite(R_IN2, HIGH);
 }
 
 // ======================================================================================
@@ -277,11 +314,13 @@ void setup() {
   // Initialize Motors
   pinMode(L_IN1, OUTPUT);
   pinMode(L_IN2, OUTPUT);
+  pinMode(L_EN, OUTPUT);
+
   pinMode(R_IN1, OUTPUT);
   pinMode(R_IN2, OUTPUT);
+  pinMode(R_EN, OUTPUT);
 
-  setupPWM(L_EN);
-  setupPWM(R_EN);
+  stopMotors();
 
   // Initialize Ultrasonics
   pinMode(F_TRIG, OUTPUT);
@@ -426,19 +465,19 @@ void loop() {
   // 4. Follow the line (User's Exact Verified Logic)
   if (!L && C && !R) {
     // Center sensor detects the line -> Cruise forward straight!
-    moveRobot(SPEED, SPEED);
+    forward();
   }
   else if ((L && !R && C) || (L && !R && !C)) {
     // Line is on the left -> Steer left
-    moveRobot(SPEED / 2, TURN_SPEED);
+    left();
   }
   else if ((R && !L && C) || (R && !L && !C)) {
     // Line is on the right -> Steer right
-    moveRobot(TURN_SPEED, SPEED / 2);
+    right();
   }
   else if (L && C && R) {
     // All sensors detect the line -> Reached destination marker! Stop and wait for next guest!
-    stopRobot();
+    stopMotors();
     Serial.println("\n[DESTINATION] Cross line detected (L & C & R)! Arrived at endpoint.");
     Serial.println("[STANDBY] Ready for next VIP guest card tap!\n");
     postTelemetry("ARRIVED", ",\"dest\":\"Destination Endpoint\"");
@@ -446,17 +485,17 @@ void loop() {
   }
   else if (!L && !C && !R) {
     // Line lost: reverse only if the rear is clear
-    stopRobot();
+    stopMotors();
 
     if (distanceCM(B_TRIG, B_ECHO) > OBSTACLE_DISTANCE) {
-      moveRobot(-SPEED, -SPEED);
+      backward();
       delay(250);
-      stopRobot();
+      stopMotors();
     }
   }
   else {
     // Other sensor combinations
-    moveRobot(SPEED, SPEED);
+    forward();
   }
 
   delay(10);
