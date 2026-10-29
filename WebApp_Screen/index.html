@@ -833,7 +833,7 @@
 <canvas id="face"></canvas>
 <div id="floatingUiToggle" title="Click to Show All Controls & Panels">🛠️ SHOW CONTROLS</div>
 <div id="topBar">
-  <div id="bleBadge" title="Tap to pair ESP32 over Bluetooth">● BLE: TAP TO PAIR</div>
+  <div id="bleBadge" title="ESP32 Telemetry Status (Tap for HUD)">● ESP32: CONNECTING...</div>
   <div id="langBadge" title="Tap to switch Language (English / العربية)">🌐 EN</div>
   <div id="micBadge" title="Microphone Status (Tap to unblock/allow)">🎙️ LISTENING</div>
   <div class="spacer" style="flex:1"></div>
@@ -1222,7 +1222,7 @@ if (cfg.provider !== 'openrouter' && !cfg.geminiKey) {
 function setFaceStyle(s) { cfg.style = s; store.set('style_default_v2', s); }
 window.setFaceStyle = setFaceStyle;
 const hasBridge = () => true;
-const LIVE_BRIDGE_URL = 'https://independence-freebsd-expanding-defend.trycloudflare.com';
+const LIVE_BRIDGE_URL = 'https://bunny-state-aging-authentication.trycloudflare.com';
 
 // Purge any stale or dead tunnel references from previous sessions
 if (cfg.bridge && (cfg.bridge.includes('loca.lt') || cfg.bridge.includes('drawing-garlic') || cfg.bridge.includes('undefined'))) {
@@ -1231,15 +1231,21 @@ if (cfg.bridge && (cfg.bridge.includes('loca.lt') || cfg.bridge.includes('drawin
 }
 
 const bridgeBase = () => {
+  // Always bind directly to current host origin if served over HTTP/HTTPS (Cloudflare tunnel or LAN IP)
+  if (typeof location !== 'undefined' && location.origin && location.origin.startsWith('http') && !location.origin.includes('github.io')) {
+    return location.origin.replace(/\/+$/, '');
+  }
   if (cfg.bridge && cfg.bridge.trim() && !cfg.bridge.includes('loca.lt') && !cfg.bridge.includes('drawing-garlic')) {
     return cfg.bridge.trim().replace(/\/+$/, '');
   }
-  // Always use the origin of the server that served the page (phone LAN IP, hostname, or localhost)
-  if (location.origin && location.origin.startsWith('http')) {
-    return location.origin.replace(/\/+$/, '');
-  }
   return LIVE_BRIDGE_URL;
 };
+
+// Purge any stale or dead tunnel references from previous sessions
+if (cfg.bridge && (cfg.bridge.includes('loca.lt') || cfg.bridge.includes('drawing-garlic') || cfg.bridge.includes('undefined') || cfg.bridge.includes('independence-freebsd'))) {
+  cfg.bridge = '';
+  store.set('bridge', '');
+}
 const TUNNEL_HEADERS = { 'Bypass-Tunnel-Reminder': 'true' };
 
 const logLines = [];
@@ -3303,7 +3309,9 @@ async function askBrain(prompt, context) {
     // Priority 1: Antigravity Pro Session on PC (Active Google Account: aliahmed120250176@gmail.com with Gemini 2.5 Flash)
     if (cfg.provider === 'relay' || !cfg.provider) {
       const endpointsToTry = [bridgeBase()];
-      if (bridgeBase() !== LIVE_BRIDGE_URL) endpointsToTry.push(LIVE_BRIDGE_URL);
+      if (bridgeBase() !== LIVE_BRIDGE_URL && !endpointsToTry.includes(LIVE_BRIDGE_URL)) {
+        endpointsToTry.push(LIVE_BRIDGE_URL);
+      }
 
       for (const base of endpointsToTry) {
         try {
@@ -3329,8 +3337,14 @@ async function askBrain(prompt, context) {
               clauses: j.clauses || null,
               firstAudioB64: j.first_audio_b64 || null,
             };
+          } else {
+            log(`Bridge returned HTTP ${res.status} from ${base}`);
           }
         } catch (bridgeErr) {
+          if (signal.aborted) {
+            log('Request aborted by user interaction');
+            throw new DOMException('Aborted by user', 'AbortError');
+          }
           log(`Bridge attempt at ${base} notice:`, bridgeErr.message);
         }
       }
@@ -3568,6 +3582,7 @@ const VISION_QUESTION_RE = /(what do you see|describe what you see|describe me|w
 
 async function handleTurn(userText, context) {
   userText = userText.trim(); if (!userText) return;
+  if (!awake) wake();
   log('heard:', userText);
   caption(userText, true);
 
@@ -3657,11 +3672,11 @@ async function handleTurn(userText, context) {
     toggleSensorHud(true);
 
     const isOnline = (hwState.connected || hwState.wifiConnected || hwState.serialConnected || hwState.simActive);
-    const isFresh = (Date.now() - (hwState.lastTelemetryTime || 0)) < 6500;
+    const isFresh = (Date.now() - (hwState.lastTelemetryTime || 0)) < 15000;
 
     let textReply = '';
     // 1. If robot is disconnected / offline: DO NOT RECITE MEMORIZED '-- cm'!
-    if (!isOnline || !isFresh || hwState.dist === null) {
+    if (!isOnline || (!isFresh && !hwState.simActive) || hwState.dist === null) {
       if (ar) {
         textReply = 'جسم الروبوت ESP32 غير متصل حالياً عشان أقيس لايف يا فندم. وصّل الروبوت بكابل الـ USB أو البلوتوث أو الواي فاي من اللوحة اللي ظاهرة قدامك، أو شغل المحاكاة عشان تجرب القياسات لايف!';
       } else {
@@ -3808,7 +3823,10 @@ async function handleTurn(userText, context) {
     log('reply:', r.emotion, r.text);
     await speak(r.text, r.emotion, { firstAudioB64: r.firstAudioB64, clauses: r.clauses });
   } catch (e) {
-    if (e.name === 'AbortError' && !thinking) return;
+    if (e.name === 'AbortError') {
+      log('Turn aborted by subsequent user interaction, skipping fallback.');
+      return;
+    }
     thinking = false;
     log('Brain exception, falling back to smart offline responder:', e.message);
     const off = await getOfflineReply(userText);
@@ -3905,11 +3923,23 @@ function commitUserUtterance(text, isBargeIn = false) {
   lastInterim = '';
   if (!text) return;
   if (!isBargeIn && isSpeaking) return;
+  if (!awake) wake();
+
   if (thinking) {
     thinking = false;
     try { chatCtrl && chatCtrl.abort(); } catch (e) {}
-    const prev = history.length && history[history.length - 1].role === 'user' ? history.pop().text : '';
-    text = (prev ? prev + ' ' : '') + text;
+    let prev = (history.length && history[history.length - 1].role === 'user') ? history.pop().text : '';
+    if (prev) {
+      const pLow = prev.toLowerCase().trim();
+      const tLow = text.toLowerCase().trim();
+      if (tLow.startsWith(pLow)) {
+        // text is already cumulative superset
+      } else if (pLow.startsWith(tLow)) {
+        text = prev;
+      } else {
+        text = prev + ' ' + text;
+      }
+    }
   }
   const ctxNote = interruptedContext;
   interruptedContext = null;
@@ -4003,7 +4033,7 @@ function initRecognition() {
       return;
     }
 
-    // Adaptive noise committer: 800ms stable silence commits the sentence
+    // Adaptive noise committer: 1350ms stable silence commits the sentence (natural speaking cadence)
     lastInterim = interim.trim();
     clearTimeout(interimCommitTimer);
     if (lastInterim && lastInterim.length >= 2) {
@@ -4013,7 +4043,7 @@ function initRecognition() {
           lastInterim = '';
           commitUserUtterance(toSend);
         }
-      }, 800);
+      }, 1350);
     }
   };
 
@@ -4849,18 +4879,28 @@ function updateHwUi() {
     if (hwState.serialConnected) {
       badge.className = 'connected';
       badge.textContent = `● USB: ${hwState.state}${distStr}`;
+      badge.style.color = '#00e5ff';
+      badge.style.borderColor = 'rgba(0, 229, 255, 0.7)';
     } else if (hwState.connected) {
       badge.className = 'connected';
       badge.textContent = `● BLE: ${hwState.state}${distStr}`;
+      badge.style.color = '#00e5ff';
+      badge.style.borderColor = 'rgba(0, 229, 255, 0.7)';
     } else if (hwState.wifiConnected) {
       badge.className = 'connected';
-      badge.textContent = `● WI-FI: ${hwState.state}${distStr}`;
+      badge.textContent = `● WI-FI: ${hwState.state || 'ONLINE'}${distStr}`;
+      badge.style.color = '#00e5ff';
+      badge.style.borderColor = 'rgba(0, 229, 255, 0.7)';
     } else if (hwState.simActive) {
       badge.className = 'connected';
       badge.textContent = `● SIM: ${hwState.state}${distStr}`;
+      badge.style.color = '#00e5ff';
+      badge.style.borderColor = 'rgba(0, 229, 255, 0.7)';
     } else {
       badge.className = '';
-      badge.textContent = '● ESP32: CONNECT / HUD';
+      badge.textContent = '● ESP32: CONNECTING...';
+      badge.style.color = '';
+      badge.style.borderColor = '';
     }
   }
   const box = $('hwTelemetry');
@@ -5191,9 +5231,9 @@ $('bleBadge').onclick = (e) => {
 };
 
 async function wake() {
+  if ($('wake')) $('wake').style.display = 'none';
   if (awake) return;
   awake = true;
-  $('wake').style.display = 'none';
   if (chatBarVisible && $('chatBar')) $('chatBar').style.display = 'flex';
   ensureAudio();
   prewarmClientAudio();
@@ -5404,7 +5444,20 @@ $('micBadge').onclick = async (e) => {
   updateMicBadge('listening');
 };
 
-$('wake').onclick = () => wake();
+const wakeEl = $('wake');
+if (wakeEl) {
+  ['pointerdown', 'touchstart', 'click'].forEach(evt => {
+    wakeEl.addEventListener(evt, (e) => {
+      e.stopPropagation();
+      wake();
+    }, { passive: false });
+  });
+}
+['pointerdown', 'touchstart', 'click'].forEach(evt => {
+  window.addEventListener(evt, () => {
+    if (!awake) wake();
+  }, { passive: true });
+});
 
 // Tap / Click anywhere on canvas = wake or instant interrupt (barge-in) while speaking. Long-press (1 s) = settings.
 let pressTimer = null, lastTap = 0;
@@ -5641,13 +5694,16 @@ setInterval(async () => {
       const data = await res.json();
       if (data.online) {
         hwState.wifiConnected = true;
+        hwState.lastTelemetryTime = Date.now();
         if (data.state) {
           hwState.wifiIp = data.state.ip || '';
-          if (data.state.dist && data.state.dist < 990) hwState.dist = data.state.dist;
-          if (data.state.back_dist && data.state.back_dist < 990) hwState.backDist = data.state.back_dist;
+          if (data.state.dist !== undefined && data.state.dist !== null) hwState.dist = data.state.dist;
+          if (data.state.back_dist !== undefined && data.state.back_dist !== null) hwState.backDist = data.state.back_dist;
           if (data.state.ir) hwState.ir = data.state.ir;
           if (data.state.robot_state) hwState.state = data.state.robot_state;
-          if (data.state.markers) hwState.markers = data.state.markers;
+          if (data.state.markers !== undefined) hwState.markers = data.state.markers;
+          if (data.state.guest && data.state.guest !== 'NONE') hwState.lastNfcName = data.state.guest;
+          if (data.state.uid && data.state.uid !== 'NONE') hwState.lastNfcUid = data.state.uid;
           if (data.state.event && data.state.event !== 'NONE') {
             if (data.state.event === 'NFC_TAP' && data.state.uid && data.state.uid !== 'NONE' && data.state.uid !== hwState.lastNfcUid) {
               onEsp32({ event: 'NFC_TAP', uid: data.state.uid, name: data.state.guest, valid: true });
