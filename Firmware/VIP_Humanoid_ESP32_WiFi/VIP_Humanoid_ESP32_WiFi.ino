@@ -63,8 +63,8 @@ String currentServerUrl     = SERVER_BASE_URL;
 #define SPEED             200  // General forward reference
 #define TURN_SPEED        200  // Turning speed
 #define TIME_SPIN_90      1500 // Calibrate for the initial departure turn
-#define TIME_SPIN_180     1890 // Estimated from 160-degree result at 1500 ms; calibrate on floor
-#define TIME_PIVOT_90     1000 // Initial estimate: half the 180-degree pivot time
+#define TIME_SPIN_180     3000 // Estimated from 160-degree result at 1500 ms; calibrate on floor
+#define TIME_PIVOT_90     1500 // Initial estimate: half the 180-degree pivot time
 #define THEATRE_WAIT_MS   10000// Wait 10 seconds at the theatre
 #define MARKER_CONFIRM_MS 50   // Require all three IR sensors on black briefly
 #define OBSTACLE_DISTANCE 15   // Emergency stop distance in cm

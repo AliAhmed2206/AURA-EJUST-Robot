@@ -2690,24 +2690,13 @@ const audioBufferCache = new Map();
 
 let micDSPActive = false;
 async function initHardwareNoiseSuppression() {
-  if (micDSPActive) return;
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: { ideal: true },
-        noiseSuppression: { ideal: true },
-        autoGainControl: { ideal: true },
-        channelCount: { ideal: 1 },
-        sampleRate: { ideal: 48000 }
-      }
-    });
-    micDSPActive = true;
-    window._auraMicStream = stream;
-    log('[AUDIO-DSP] Hardware beamforming noise suppression & acoustic echo cancellation active');
-  } catch (e) {
-    log('[AUDIO-DSP] Note on hardware mic constraints:', e.message);
+  // Mobile Android fix: NEVER hold an open getUserMedia track in the background,
+  // because Android locks the hardware mic exclusively and starves SpeechRecognition!
+  if (window._auraMicStream) {
+    try { window._auraMicStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    window._auraMicStream = null;
   }
+  micDSPActive = false;
 }
 
 function ensureAudio() {
@@ -3836,7 +3825,7 @@ function updateMicBadge(state, detail = '') {
   b.className = '';
   if (state === 'blocked') {
     b.classList.add('blocked');
-    b.textContent = '🎙️⚠️ UNBLOCK MIC';
+    b.textContent = '🎙️ TAP TO ALLOW MIC';
   } else if (state === 'hearing') {
     b.classList.add('hearing');
     b.textContent = detail ? `👂 ${detail}` : '👂 HEARING...';
@@ -3860,7 +3849,7 @@ function updateLangBadge() {
 }
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, recRunning = false, awake = false, restartListenTimer = null, interruptedContext = null;
+let rec = null, recRunning = false, awake = true, restartListenTimer = null, interruptedContext = null;
 let lastInterim = '', recTaintedBySpeaker = false;
 
 // Explicit barge-in words that can interrupt AURA while her speaker is playing
@@ -5375,19 +5364,20 @@ if ($('testMicBtn')) $('testMicBtn').onclick = async () => {
 
 $('micBadge').onclick = async (e) => {
   e.stopPropagation();
-  if ($('micBadge').classList.contains('blocked')) {
-    showMicHelp();
-    return;
-  }
-  e.stopPropagation();
   ensureAudio();
   awake = true;
-  $('wake').style.display = 'none';
+  if ($('wake')) $('wake').style.display = 'none';
   if (chatBarVisible && $('chatBar')) $('chatBar').style.display = 'flex';
+  $('micBadge').classList.remove('blocked');
+  
+  // Directly trigger browser mic permission prompt if not yet granted, then immediately release tracks!
   try {
     const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-    s.getTracks().forEach(t => t.stop()); // release audio hardware immediately
-  } catch (err) {}
+    s.getTracks().forEach(t => t.stop()); // CRITICAL: Release mic hardware immediately so SpeechRecognition can use it!
+    notice(cfg.lang === 'ar-EG' ? 'تم تفعيل الميكروفون بنجاح!' : 'Microphone enabled & listening!', 2500);
+  } catch (err) {
+    log('Mic access note:', err.message);
+  }
   initRecognition();
   startRec();
   updateMicBadge('listening');
@@ -5414,10 +5404,15 @@ canvas.addEventListener('pointerup', (e) => {
   lastTap = now;
 });
 canvas.addEventListener('pointerleave', () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
-canvas.addEventListener('click', () => {
+canvas.addEventListener('click', async () => {
+  ensureAudio();
   if (isSpeaking || thinking) {
     bargeIn();
     notice(cfg.lang === 'ar-EG' ? 'وقفت — سامعاك 🎙️' : 'Stopped — Listening to you 🎙️', 1500);
+    return;
+  }
+  if (!recRunning) {
+    startRec();
   }
 });
 
