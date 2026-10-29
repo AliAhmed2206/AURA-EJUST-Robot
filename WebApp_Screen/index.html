@@ -2862,48 +2862,47 @@ async function speak(text, emo = 'NEUTRAL', { holdAfter = 2500, firstAudioB64 = 
 
   const ctrl = new AbortController(); speak.ctrl = ctrl;
 
-  // If no bridge is active (running as client PWA on Vercel/GitHub Pages):
-  // Play the full text in ONE smooth natural utterance
-  if (!hasBridge()) {
-    speakingAnim = true;
-    setEmotion(emo);
-    caption(text, false);
-    await speakFallback(text);
-  } else {
-    // Neural streaming chunks when connected to local bridge
-    const sentences = (clauses && clauses.length) ? clauses : splitSentences(text);
-    const jobs = sentences.map((s, idx) => {
-      if (idx === 0 && firstAudioB64) {
-        return decodeBase64Audio(firstAudioB64).catch(() => fetchVoice(s, ctrl.signal)).catch(() => null);
-      }
-      return fetchVoice(s, ctrl.signal).catch(e => null);
-    });
+  try {
+    if (!hasBridge()) {
+      speakingAnim = true;
+      setEmotion(emo);
+      caption(text, false);
+      await speakFallback(text);
+    } else {
+      const sentences = (clauses && clauses.length) ? clauses : splitSentences(text);
+      const jobs = sentences.map((s, idx) => {
+        if (idx === 0 && firstAudioB64) {
+          return decodeBase64Audio(firstAudioB64).catch(() => fetchVoice(s, ctrl.signal)).catch(() => null);
+        }
+        return fetchVoice(s, ctrl.signal).catch(e => null);
+      });
 
-    for (let i = 0; i < sentences.length; i++) {
-      const buf = await jobs[i];
-      if (myId !== speechId) return;
-      if (i === 0) {
-        speakingAnim = true;
-        setEmotion(emo);
-        caption(text, false);
+      for (let i = 0; i < sentences.length; i++) {
+        const buf = await jobs[i];
+        if (myId !== speechId) return;
+        if (i === 0) {
+          speakingAnim = true;
+          setEmotion(emo);
+          caption(text, false);
+        }
+        if (buf) await playBuffer(buf); else await speakFallback(sentences[i]);
+        if (myId !== speechId) return;
+        spokenSoFar += (spokenSoFar ? ' ' : '') + sentences[i];
       }
-      if (buf) await playBuffer(buf); else await speakFallback(sentences[i]);
-      if (myId !== speechId) return;
-      spokenSoFar += (spokenSoFar ? ' ' : '') + sentences[i];
     }
+  } catch (err) {
+    log('TTS playback note:', err);
+  } finally {
+    speakingAnim = false;
+    lastSpeechEnd = performance.now();
+    if (myId === speechId) {
+      setTimeout(() => { if (myId === speechId && !thinking) setEmotion(baseState); }, holdAfter);
+    }
+    isSpeaking = false;
+    recTaintedBySpeaker = false;
+    updateMicBadge('listening');
+    scheduleRestart(300);
   }
-
-  speakingAnim = false;
-  lastSpeechEnd = performance.now();
-  if (myId === speechId) {
-    setTimeout(() => { if (myId === speechId && !thinking) setEmotion(baseState); }, holdAfter);
-  }
-
-  // 2. CRITICAL: Clear speaking state, reset taint, and restart clean listening after room echo clears
-  isSpeaking = false;
-  recTaintedBySpeaker = false;
-  updateMicBadge('listening');
-  scheduleRestart(300);
 }
 
 function stopSpeaking() {
@@ -3823,12 +3822,13 @@ function updateMicBadge(state, detail = '') {
   const b = $('micBadge');
   if (!b) return;
   b.className = '';
+  const langTag = (cfg.lang === 'ar-EG') ? 'عربي' : 'EN';
   if (state === 'blocked') {
     b.classList.add('blocked');
     b.textContent = '🎙️ TAP TO ALLOW MIC';
   } else if (state === 'hearing') {
     b.classList.add('hearing');
-    b.textContent = detail ? `👂 ${detail}` : '👂 HEARING...';
+    b.textContent = detail ? `👂 "${detail.slice(0, 20)}"` : '👂 HEARING...';
   } else if (state === 'thinking') {
     b.classList.add('hearing');
     b.textContent = '🧠 THINKING...';
@@ -3836,19 +3836,14 @@ function updateMicBadge(state, detail = '') {
     b.classList.add('speaking');
     b.textContent = '🔊 SPEAKING (TAP TO STOP)';
   } else if (state === 'listening') {
-    b.textContent = '🎙️ LISTENING';
+    b.textContent = `🎙️ LISTENING (${langTag})`;
   } else {
-    b.textContent = '🎙️ TAP TO WAKE';
+    b.textContent = `🎙️ LISTENING (${langTag})`;
   }
 }
 
 function updateLangBadge() {
-  const l = $('langBadge');
-  if (!l) return;
-  l.textContent = (cfg.lang === 'ar-EG') ? '🌐 عربي' : '🌐 EN';
-}
-
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const l = $(const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, recRunning = false, awake = true, restartListenTimer = null, interruptedContext = null;
 let lastInterim = '', recTaintedBySpeaker = false;
 
@@ -3871,10 +3866,12 @@ function isSelfEcho(heardText, replyText) {
   return (matching / hWords.length) >= 0.55;
 }
 
-function scheduleRestart(delay = 90) {
+function scheduleRestart(delay = 300) {
   clearTimeout(restartListenTimer);
   restartListenTimer = setTimeout(() => {
-    if (awake && !recRunning) startRec();
+    if (awake && !recRunning && !isSpeaking) {
+      startRec();
+    }
   }, delay);
 }
 
@@ -3895,7 +3892,7 @@ function bargeIn() {
   recTaintedBySpeaker = true;
   if (rec && recRunning) { try { rec.abort(); } catch (e) {} }
   setEmotion('LISTENING', 4500);
-  scheduleRestart(220);
+  scheduleRestart(250);
 }
 
 function commitUserUtterance(text, isBargeIn = false) {
@@ -3929,31 +3926,27 @@ function isDirectVoiceCommand(text) {
 
 let interimCommitTimer = null;
 
-function createFreshRecognition() {
-  if (!SR) { notice('Speech recognition is not supported in this browser.', 0); return null; }
-  if (rec) {
-    try {
-      rec.onstart = null;
-      rec.onresult = null;
-      rec.onerror = null;
-      rec.onend = null;
-      rec.abort();
-    } catch (e) {}
-    rec = null;
+// Persistent, single-instance speech recognizer
+function initRecognition() {
+  if (!SR) {
+    notice('Speech recognition is not supported in this browser.', 0);
+    return null;
   }
+  if (rec) return rec;
 
   const r = new SR();
-  r.continuous = false;
-  r.interimResults = true;
+  r.continuous = true;       // Continuous capture without stopping after 1 second
+  r.interimResults = true;   // Live word feedback
   r.maxAlternatives = 1;
-  r.lang = cfg.lang;
+  r.lang = cfg.lang || 'ar-EG';
 
   r.onstart = () => {
     recRunning = true;
     lastInterim = '';
     clearTimeout(interimCommitTimer);
     recTaintedBySpeaker = isSpeaking;
-    if (!isSpeaking) updateMicBadge('listening');
+    updateMicBadge('listening');
+    log('[STT] Speech recognition actively listening in', r.lang);
   };
 
   r.onresult = (ev) => {
@@ -3965,7 +3958,9 @@ function createFreshRecognition() {
     const rawHeard = (final || interim).trim();
     if (!rawHeard) return;
 
-    // IMMEDIATE BARGE-IN INTERRUPTION: If speaking, user voice cuts off speech
+    log('[STT HEARD]', rawHeard, '(final:', Boolean(final), ')');
+
+    // Immediate barge-in interruption: if speaking, user voice cuts off speech
     if (isSpeaking) {
       if (!isSelfEcho(rawHeard, currentReply)) {
         log('[BARGE-IN] User interrupted:', rawHeard);
@@ -3983,9 +3978,9 @@ function createFreshRecognition() {
       setEmotion('LISTENING', 4000);
     }
 
-    // Live transcript feedback
+    // Live transcript feedback in caption & badge
     caption(rawHeard + (final ? '' : ' …'), true);
-    updateMicBadge('hearing', rawHeard.slice(0, 24));
+    updateMicBadge('hearing', rawHeard);
 
     // Direct motion / emergency stop commands fast-path
     if (isDirectVoiceCommand(rawHeard)) {
@@ -4003,7 +3998,7 @@ function createFreshRecognition() {
       return;
     }
 
-    // Adaptive noise committer: 900ms stable silence commits the sentence
+    // Adaptive noise committer: 800ms stable silence commits the sentence
     lastInterim = interim.trim();
     clearTimeout(interimCommitTimer);
     if (lastInterim && lastInterim.length >= 2) {
@@ -4013,22 +4008,21 @@ function createFreshRecognition() {
           lastInterim = '';
           commitUserUtterance(toSend);
         }
-      }, 900);
+      }, 800);
     }
   };
 
   r.onerror = (e) => {
-    recRunning = false;
-    lastInterim = '';
-    clearTimeout(interimCommitTimer);
+    log('[STT ERROR]', e.error);
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-      notice('Microphone blocked. Tap mic badge to allow.', 4000);
+      recRunning = false;
       updateMicBadge('blocked');
-    } else {
-      if (e.error !== 'no-speech' && e.error !== 'aborted') log('rec notice:', e.error);
-      if (!isSpeaking) updateMicBadge('listening');
-      scheduleRestart(250);
+      notice('Microphone blocked. Tap mic badge to allow.', 4000);
+      return;
     }
+    // For no-speech, network glitch, or aborted: reset and smoothly restart
+    recRunning = false;
+    scheduleRestart(400);
   };
 
   r.onend = () => {
@@ -4040,32 +4034,55 @@ function createFreshRecognition() {
       commitUserUtterance(toSend);
     }
     lastInterim = '';
-    if (awake && !isSpeaking) scheduleRestart(150);
+    log('[STT END] Recognition paused, restarting...');
+    if (awake && !isSpeaking) {
+      scheduleRestart(300);
+    }
   };
 
   rec = r;
   return r;
 }
 
-function initRecognition() {
-  createFreshRecognition();
-}
-
 function startRec() {
-  if (recRunning || !awake || isSpeaking) return;
+  if (recRunning || isSpeaking) return;
+  if (!rec) initRecognition();
+  if (!rec) return;
+
   try {
-    createFreshRecognition();
-    if (!rec) return;
+    rec.lang = cfg.lang || 'ar-EG';
     rec.start();
     recRunning = true;
     updateMicBadge('listening');
   } catch (e) {
-    recRunning = false;
-    scheduleRestart(350);
+    if (e.name === 'InvalidStateError') {
+      recRunning = true; // Already started
+      updateMicBadge('listening');
+    } else {
+      recRunning = false;
+      scheduleRestart(500);
+    }
   }
 }
 
-function setLang(l) { cfg.lang = l; store.set('lang', l); if (rec) { try { rec.abort(); } catch (e) {} } }
+function setLang(l) {
+  cfg.lang = l;
+  store.set('lang', l);
+  updateLangBadge();
+  updateMicBadge('listening');
+  if (rec) {
+    try { rec.stop(); } catch (e) {}
+    recRunning = false;
+    scheduleRestart(250);
+  }
+}
+
+// Watchdog: ensures continuous listening unless robot is actively speaking
+setInterval(() => {
+  if (awake && !recRunning && !isSpeaking && !$('micBadge').classList.contains('blocked')) {
+    startRec();
+  }
+}, 1200);ec.abort(); } catch (e) {} } }
 setInterval(() => { if (awake && !recRunning) startRec(); }, 900);   // watchdog: never stay deaf
 
 /* =============================================================================
