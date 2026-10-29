@@ -12,12 +12,12 @@
 #define IR_R 22
 
 // ---------- L293D / L298N MOTOR DRIVER ----------
-#define L_IN1 14
-#define L_IN2 27
+#define IN1 14
+#define IN2 27
 #define L_EN  25
 
-#define R_IN1 26
-#define R_IN2 33
+#define IN3 26
+#define IN4 33
 #define R_EN  13
 
 // ---------- FRONT ULTRASONIC ----------
@@ -44,12 +44,6 @@
 #define TIME_SPIN_90      1000 // Milliseconds to spin 90 degrees (adjust for floor/battery)
 #define OBSTACLE_DISTANCE 15
 
-// ---------- OBSTACLE AVOIDANCE TUNING (DETOUR) ----------
-#define AVOID_TURN_TIME   700  // Time (ms) to turn away / towards the line (~80-90°)
-#define AVOID_SIDE_TIME   1000 // Time (ms) to drive sideways away from obstacle (extra margin for wide columns)
-#define AVOID_PASS_TIME   1200 // Time (ms) to drive forward past the obstacle
-#define AVOID_TIMEOUT     4500 // Max search time (ms) to reacquire the line
-
 // ======================================================================================
 // 3. REGISTERED VIP GUEST CARDS TABLE (Sheet2 + Official Replacements)
 // ======================================================================================
@@ -73,6 +67,7 @@ const VIPCard VIP_CARDS[] = {
   {"53CA0572420001", "Mohamed Gouda", 11},
   {"53BB0572420001", "Mohamed Adel", 12},
   {"53D00572420001", "Ahmed Abd El-Malek", 13},
+  {"53D10572420001", "Marwan Yasser",  14},
   // Fallbacks
   {"53B80572420001", "VIP Guest 14", 14},
   {"53B90572420001", "VIP Guest 15", 15},
@@ -135,13 +130,59 @@ void motor(int in1, int in2, int en, int speed) {
   motorPWM(en, abs(speed));
 }
 
-void moveRobot(int left, int right) {
-  motor(L_IN1, L_IN2, L_EN, left);
-  motor(R_IN1, R_IN2, R_EN, right);
+void forward() {
+  motorPWM(L_EN, SPEED);
+  motorPWM(R_EN, SPEED);
+
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
 }
 
-void stopRobot() {
-  moveRobot(0, 0);
+void backward() {
+  motorPWM(L_EN, SPEED);
+  motorPWM(R_EN, SPEED);
+
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+}
+
+void left() {
+  motorPWM(L_EN, TURN_SPEED);
+  motorPWM(R_EN, TURN_SPEED);
+
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+}
+
+void right() {
+  motorPWM(L_EN, TURN_SPEED);
+  motorPWM(R_EN, TURN_SPEED);
+
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+}
+
+void stop() {
+  motorPWM(L_EN, 0);
+  motorPWM(R_EN, 0);
+
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
 }
 
 // ======================================================================================
@@ -216,178 +257,7 @@ bool checkNfcTap() {
 }
 
 // ======================================================================================
-// 7. OBSTACLE AVOIDANCE (BYPASS DETOUR AND REJOIN BLACK LINE)
-// ======================================================================================
-void avoidObstacle() {
-  Serial.printf("\n[OBSTACLE] Front obstacle detected (< %d cm)! Checking if bypass is possible...\n", OBSTACLE_DISTANCE);
-  stopRobot();
-  delay(300);
-
-  // 1. Turn Right away from the black tape
-  Serial.println("[AVOID 1/5] Turning right away from line...");
-  moveRobot(TURN_SPEED, -TURN_SPEED);
-  delay(AVOID_TURN_TIME);
-  stopRobot();
-  delay(200);
-
-  // WALL DEFENSE CHECK 1: Is there a solid wall on the right?
-  int sideDist = distanceCM(F_TRIG, F_ECHO);
-  if (sideDist < OBSTACLE_DISTANCE) {
-    Serial.printf("\n[WALL DETECTED] Front wall continues to the right (%d cm)! Cannot bypass.\n", sideDist);
-    Serial.println("[SAFETY HALT] Robot stopped in standby. Waiting for assistance.\n");
-    stopRobot();
-    robotRunning = false; // Stay stopped in standby
-    return;
-  }
-
-  // 2. Move forward sideways to clear the obstacle width (monitoring front continuously)
-  Serial.println("[AVOID 2/5] Driving sideways to clear obstacle width...");
-  unsigned long sideStart = millis();
-  moveRobot(SPEED, SPEED);
-  while (millis() - sideStart < AVOID_SIDE_TIME) {
-    if (distanceCM(F_TRIG, F_ECHO) < OBSTACLE_DISTANCE) {
-      Serial.println("\n[WALL DETECTED] Blocked by wall while moving sideways! Safety halt.");
-      stopRobot();
-      robotRunning = false;
-      return;
-    }
-    delay(10);
-  }
-  stopRobot();
-  delay(150);
-
-  // 3. Turn Left to face parallel to the line
-  Serial.println("[AVOID 3/5] Turning left parallel to line...");
-  moveRobot(-TURN_SPEED, TURN_SPEED);
-  delay(AVOID_TURN_TIME);
-  stopRobot();
-  delay(200);
-
-  // WALL DEFENSE CHECK 2: Is the path parallel to the line blocked?
-  int fwdDist = distanceCM(F_TRIG, F_ECHO);
-  if (fwdDist < OBSTACLE_DISTANCE) {
-    Serial.printf("\n[WALL DETECTED] Path alongside obstacle is blocked (%d cm)! Safety halt.\n", fwdDist);
-    stopRobot();
-    robotRunning = false;
-    return;
-  }
-
-  // 4. Drive forward alongside the obstacle to pass it (monitoring front continuously)
-  Serial.println("[AVOID 4/5] Driving forward past obstacle length...");
-  unsigned long passStart = millis();
-  moveRobot(SPEED, SPEED);
-  while (millis() - passStart < AVOID_PASS_TIME) {
-    if (distanceCM(F_TRIG, F_ECHO) < OBSTACLE_DISTANCE) {
-      Serial.println("\n[WALL DETECTED] Blocked ahead while passing obstacle! Safety halt.");
-      stopRobot();
-      robotRunning = false;
-      return;
-    }
-    delay(10);
-  }
-  stopRobot();
-  delay(150);
-
-  // 5. Turn Left to check if column/obstacle is cleared (Adaptive Leap-Frog for Big Columns)
-  const int MAX_COLUMN_EXTENSIONS = 4; // Up to 4 step extensions for huge pillars
-  int extensions = 0;
-  bool columnCleared = false;
-
-  while (extensions <= MAX_COLUMN_EXTENSIONS) {
-    Serial.printf("[AVOID 5/5] Turning left toward black line (Check %d)...\n", extensions + 1);
-    moveRobot(-TURN_SPEED, TURN_SPEED);
-    delay(AVOID_TURN_TIME);
-    stopRobot();
-    delay(200);
-
-    // Check front distance: Is the column still blocking the path back?
-    int returnDist = distanceCM(F_TRIG, F_ECHO);
-    if (returnDist > 25) {
-      // Clear path back to the line!
-      Serial.printf("[COLUMN CLEARED] Path back to line is clear (%d cm)!\n", returnDist);
-      columnCleared = true;
-      break;
-    }
-
-    // Column flank still blocking the turn!
-    extensions++;
-    if (extensions > MAX_COLUMN_EXTENSIONS) {
-      Serial.printf("\n[WALL / COLUMN TOO LARGE] Blocked at %d cm after %d extensions! Safety halt.\n", returnDist, MAX_COLUMN_EXTENSIONS);
-      stopRobot();
-      robotRunning = false;
-      return;
-    }
-
-    Serial.printf("[BIG COLUMN DETECTED] Front blocked by column flank at %d cm. Stepping further forward...\n", returnDist);
-    // Turn back Right to face parallel to the line
-    moveRobot(TURN_SPEED, -TURN_SPEED);
-    delay(AVOID_TURN_TIME);
-    stopRobot();
-    delay(150);
-
-    // Step forward another 600ms along the column side
-    Serial.println("[COLUMN EXTENSION] Driving forward alongside column (+600ms)...");
-    unsigned long extStart = millis();
-    moveRobot(SPEED, SPEED);
-    while (millis() - extStart < 600) {
-      if (distanceCM(F_TRIG, F_ECHO) < OBSTACLE_DISTANCE) {
-        Serial.println("\n[WALL DETECTED] Blocked ahead during column extension! Safety halt.");
-        stopRobot();
-        robotRunning = false;
-        return;
-      }
-      delay(10);
-    }
-    stopRobot();
-    delay(150);
-  }
-
-  // 6. Move forward until IR sensors intercept the black line
-  Serial.println("[AVOID 6/5] Searching forward for black tape...");
-  unsigned long searchStart = millis();
-  bool lineFound = false;
-
-  moveRobot(SPEED, SPEED);
-  while (millis() - searchStart < AVOID_TIMEOUT) {
-    // Safety: if a wall blocks front while searching for line, brake
-    if (distanceCM(F_TRIG, F_ECHO) < OBSTACLE_DISTANCE) {
-      Serial.println("\n[WALL DETECTED] Blocked ahead while searching for line! Safety halt.");
-      stopRobot();
-      robotRunning = false;
-      return;
-    }
-
-    bool L = (digitalRead(IR_L) == ON_LINE);
-    bool C = (digitalRead(IR_C) == ON_LINE);
-    bool R = (digitalRead(IR_R) == ON_LINE);
-
-    if (L || C || R) {
-      lineFound = true;
-      Serial.printf("[AVOID REJOINED] Black tape detected! [L:%d C:%d R:%d]\n", L ? 1 : 0, C ? 1 : 0, R ? 1 : 0);
-      break;
-    }
-    delay(10);
-  }
-  stopRobot();
-  delay(200);
-
-  if (lineFound) {
-    // 7. Turn slightly Right to straighten out along the line
-    Serial.println("[AVOID ALIGN] Straightening robot onto line...");
-    moveRobot(TURN_SPEED, -TURN_SPEED);
-    delay(AVOID_TURN_TIME / 2);
-    stopRobot();
-    delay(200);
-    Serial.println("[RESUME] Obstacle cleared! Resuming normal line following.\n");
-  } else {
-    Serial.println("\n[AVOID TIMEOUT] Black line not found. Safety halt into standby.\n");
-    stopRobot();
-    robotRunning = false;
-  }
-}
-
-// ======================================================================================
-// 8. SETUP
+// 7. SETUP
 // ======================================================================================
 void setup() {
   Serial.begin(115200);
@@ -403,10 +273,10 @@ void setup() {
   pinMode(IR_R, INPUT);
 
   // Initialize Motors
-  pinMode(L_IN1, OUTPUT);
-  pinMode(L_IN2, OUTPUT);
-  pinMode(R_IN1, OUTPUT);
-  pinMode(R_IN2, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
 
   setupPWM(L_EN);
   setupPWM(R_EN);
@@ -418,7 +288,7 @@ void setup() {
   pinMode(B_TRIG, OUTPUT);
   pinMode(B_ECHO, INPUT);
 
-  stopRobot();
+  stop();
 
   // Initialize NFC Reader
   pinMode(NFC_RST_PIN, OUTPUT);
@@ -479,16 +349,16 @@ void loop() {
 
   // 1. NFC Scan Gate: Waits for VIP Card tap to start
   if (!robotRunning) {
-    stopRobot();
+    stop();
     if (checkNfcTap()) {
       Serial.println("[START] Card verified! Delaying 2 seconds...");
-      stopRobot();
+      stop();
       delay(2000); // 1. Immediate 2-second delay after scanning
 
       Serial.println("[START] Turning 90 degrees...");
       // 2. Turn 90 degrees (Clockwise. If you need counter-clockwise, use: -TURN_SPEED, TURN_SPEED)
       unsigned long t0 = millis();
-      moveRobot(TURN_SPEED, -TURN_SPEED);
+      left();
       while (millis() - t0 < TIME_SPIN_90) {
         // If center IR catches black tape during the turn, lock onto line immediately
         if (millis() - t0 > 300 && digitalRead(IR_C) == ON_LINE) {
@@ -497,7 +367,7 @@ void loop() {
         }
         delay(10);
       }
-      stopRobot();
+      stop();
       delay(200);
 
       // 3. Normal line follower active until three IRs read 1s
@@ -508,9 +378,10 @@ void loop() {
     return;
   }
 
-  // 2. Obstacle Detection & Bypass Detour
+
+  // 2. Stop when an obstacle is detected in front
   if (distanceCM(F_TRIG, F_ECHO) < OBSTACLE_DISTANCE) {
-    avoidObstacle();
+    stop();
     return;
   }
 
@@ -522,35 +393,35 @@ void loop() {
   // 4. Follow the line (User's Exact Verified Logic)
   if (!L && C && !R) {
     // Center sensor detects the line -> Cruise forward straight!
-    moveRobot(SPEED, SPEED);
+    forward();
   }
   else if ((L && !R && C) || (L && !R && !C)) {
     // Line is on the left -> Steer left
-    moveRobot(SPEED / 2, TURN_SPEED);
+    left();
   }
   else if ((R && !L && C) || (R && !L && !C)) {
     // Line is on the right -> Steer right
-    moveRobot(TURN_SPEED, SPEED / 2);
+    right();
   }
   else if (L && C && R) {
     // All sensors detect the line -> Reached destination marker! Stop and wait for next guest!
-    stopRobot();
+    stop();
     Serial.println("\n[DESTINATION] Cross line detected (L & C & R)! Arrived at endpoint.");
     Serial.println("[STANDBY] Ready for next VIP guest card tap!\n");
     robotRunning = false;
   }
   else if (!L && !C && !R) {
     // Line lost: reverse only if the rear is clear
-    stopRobot();
-
+    stop();
     if (distanceCM(B_TRIG, B_ECHO) > OBSTACLE_DISTANCE) {
-    stopRobot();
-    return;
+      backward();
+      delay(250);
+      stop();
     }
   }
   else {
     // Other sensor combinations
-    moveRobot(SPEED, SPEED);
+    forward();
   }
 
   delay(10);
