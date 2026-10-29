@@ -3843,7 +3843,12 @@ function updateMicBadge(state, detail = '') {
 }
 
 function updateLangBadge() {
-  const l = $(const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const l = $('langBadge');
+  if (!l) return;
+  l.textContent = (cfg.lang === 'ar-EG') ? '🌐 عربي' : '🌐 EN';
+}
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, recRunning = false, awake = true, restartListenTimer = null, interruptedContext = null;
 let lastInterim = '', recTaintedBySpeaker = false;
 
@@ -4082,8 +4087,7 @@ setInterval(() => {
   if (awake && !recRunning && !isSpeaking && !$('micBadge').classList.contains('blocked')) {
     startRec();
   }
-}, 1200);ec.abort(); } catch (e) {} } }
-setInterval(() => { if (awake && !recRunning) startRec(); }, 900);   // watchdog: never stay deaf
+}, 1200);
 
 /* =============================================================================
    5. EYES — camera face tracking (MediaPipe, with a motion/skin fallback)
