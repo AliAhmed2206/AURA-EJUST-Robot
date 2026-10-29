@@ -318,6 +318,8 @@ void setup() {
   // Connect to Wi-Fi
   Serial.printf("[WI-FI] Connecting to SSID: %s\n", WIFI_SSID);
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   int attempts = 0;
@@ -357,11 +359,12 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // Maintain Wi-Fi
-  if (WiFi.status() == WL_DISCONNECTED) {
+  // Maintain Wi-Fi Auto-Reconnection
+  if (WiFi.status() != WL_CONNECTED) {
     static unsigned long lastReconnect = 0;
-    if (now - lastReconnect > 8000) {
+    if (now - lastReconnect > 5000) {
       lastReconnect = now;
+      Serial.println("[WI-FI] Connection lost. Attempting auto-reconnect to hotspot...");
       WiFi.reconnect();
     }
   }
