@@ -1222,7 +1222,7 @@ if (cfg.provider !== 'openrouter' && !cfg.geminiKey) {
 function setFaceStyle(s) { cfg.style = s; store.set('style_default_v2', s); }
 window.setFaceStyle = setFaceStyle;
 const hasBridge = () => true;
-const LIVE_BRIDGE_URL = 'https://bunny-state-aging-authentication.trycloudflare.com';
+const LIVE_BRIDGE_URL = 'https://endless-handmade-where-essentially.trycloudflare.com';
 
 // Purge any stale or dead tunnel references from previous sessions
 if (cfg.bridge && (cfg.bridge.includes('loca.lt') || cfg.bridge.includes('drawing-garlic') || cfg.bridge.includes('undefined'))) {
@@ -4418,6 +4418,24 @@ function findVipCard(uid) {
   return null;
 }
 
+function formatDrGuestName(name) {
+  if (!name) return 'VIP Guest';
+  if (/^VIP Guest/i.test(name)) return name;
+  let clean = name.replace(/^(Prof\.|Doctor|Dr\.)\s*/i, '').trim();
+  clean = clean.split('(')[0].trim();
+  return 'Dr. ' + clean;
+}
+
+function formatDrGuestNameAr(name, arName) {
+  if (arName && !/^ضيف/i.test(arName)) {
+    let cleanAr = arName.replace(/^(البروفيسور\s*الدكتور|البروفيسور|الأستاذ\s*الدكتور|الأستاذ|الدكتور|د\.)\s*/i, '').trim();
+    cleanAr = cleanAr.split('(')[0].trim();
+    return 'دكتور ' + cleanAr;
+  }
+  let clean = (name || '').replace(/^(Prof\.|Doctor|Dr\.)\s*/i, '').trim().split('(')[0].trim();
+  return 'دكتور ' + clean;
+}
+
 const hwState = {
   connected: false,         // Web Bluetooth (BLE)
   wifiConnected: false,     // Wi-Fi Local/Cloud Bridge
@@ -5129,25 +5147,28 @@ function onEsp32(raw) {
     const isValid = Boolean(localCard || d.valid === true || hwState.allowAnyNfc);
 
     if (isValid) {
-      const guestName = (localCard && localCard.name) || d.name || ('VIP Guest ' + (d.id || ''));
-      const guestArName = (localCard && localCard.arName) || guestName;
+      const rawGuestName = (localCard && localCard.name) || d.name || ('VIP Guest ' + (d.id || ''));
+      const guestArName = (localCard && localCard.arName) || rawGuestName;
+
+      const drName = formatDrGuestName(rawGuestName);
+      const drArName = formatDrGuestNameAr(rawGuestName, guestArName);
 
       hwState.lastNfcValid = true;
-      hwState.lastNfcName = guestName;
+      hwState.lastNfcName = drName;
       hwState.state = 'WELCOME';
       updateHwUi();
       setEmotion('LOVE', 4500);
 
       // If ESP32 reported valid:false because this card was registered dynamically on the phone, command ESP32 to start escort!
       if (d.valid === false) {
-        sendBle({ cmd: 'START_ESCORT', uid, name: guestName });
+        sendBle({ cmd: 'START_ESCORT', uid, name: drName });
       }
 
-      showNfcBanner(`✅ NFC VERIFIED: ${guestName}`, 'valid', 5000);
+      showNfcBanner(`✅ NFC VERIFIED: ${drName}`, 'valid', 5000);
       const t = ar
-        ? `أهلاً بحضرتك يا ${guestArName}! تم تأكيد كارتك، اتفضل ورايا!`
-        : `Welcome, ${guestName}! Your card is verified. Please follow me!`;
-      history.push({ role: 'user', text: `[NFC Card Scanned — VALID: ${guestName} (${uid})]` }, { role: 'model', text: t });
+        ? `أهلاً بحضرتك يا ${drArName}! مرحباً بك في الجامعة اليابانية، شرفتنا ونورتنا!`
+        : `Welcome ${drName}! Welcome to E-JUST!`;
+      history.push({ role: 'user', text: `[NFC Card Scanned — VALID: ${drName} (${uid})]` }, { role: 'model', text: t });
       speak(t, 'LOVE', { holdAfter: 3500 });
     } else {
       // 4. Card is INVALID / UNREGISTERED
@@ -5685,6 +5706,9 @@ $('bDemo').onclick = async () => {
 updateHwUi();
 
 // Small debug/automation hook
+let lastHandledNfcSeq = 0;
+let lastHandledNfcTime = 0;
+
 // Poll ESP32 Wi-Fi hardware link
 setInterval(async () => {
   try {
@@ -5702,11 +5726,21 @@ setInterval(async () => {
           if (data.state.ir) hwState.ir = data.state.ir;
           if (data.state.robot_state) hwState.state = data.state.robot_state;
           if (data.state.markers !== undefined) hwState.markers = data.state.markers;
-          if (data.state.guest && data.state.guest !== 'NONE') hwState.lastNfcName = data.state.guest;
-          if (data.state.uid && data.state.uid !== 'NONE') hwState.lastNfcUid = data.state.uid;
+
           if (data.state.event && data.state.event !== 'NONE') {
-            if (data.state.event === 'NFC_TAP' && data.state.uid && data.state.uid !== 'NONE' && data.state.uid !== hwState.lastNfcUid) {
-              onEsp32({ event: 'NFC_TAP', uid: data.state.uid, name: data.state.guest, valid: true });
+            if (data.state.event === 'NFC_TAP' && data.state.uid && data.state.uid !== 'NONE') {
+              const seq = data.state.last_nfc_seq || data.state.event_seq || 0;
+              const now = Date.now();
+              const isNewSeq = seq > 0 && seq !== lastHandledNfcSeq;
+              const isTimePassed = (now - lastHandledNfcTime) > 3500;
+
+              if (isNewSeq || isTimePassed) {
+                lastHandledNfcSeq = seq;
+                lastHandledNfcTime = now;
+                hwState.lastNfcUid = data.state.uid;
+                hwState.lastNfcName = data.state.guest || 'VIP Guest';
+                onEsp32({ event: 'NFC_TAP', uid: data.state.uid, name: data.state.guest, valid: true });
+              }
             } else if (data.state.event === 'ARRIVED' && hwState.state !== 'ARRIVED') {
               onEsp32({ event: 'ARRIVED', dest: data.state.dest || 'Theatre' });
             } else if (data.state.event === 'OBSTACLE' && !hwState.lastObstacleActive) {

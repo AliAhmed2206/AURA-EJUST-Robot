@@ -682,7 +682,10 @@ esp32_state = {
     "last_seen_str": "Never",
     "ip": None,
     "event": "NONE",
+    "event_seq": 0,
+    "last_nfc_seq": 0,
     "uid": "NONE",
+    "guest": "NONE",
     "dist": 999,
     "markers": 0,
     "robot_state": "IDLE"
@@ -704,7 +707,7 @@ def get_esp32_token():
 @app.get("/api/esp32/status")
 def get_esp32_status():
     """Returns real-time connection status of the ESP32 Wi-Fi hardware."""
-    is_online = (time.time() - esp32_state["last_seen"]) < 6.0
+    is_online = (time.time() - esp32_state["last_seen"]) < 25.0
     return {
         "online": is_online,
         "status": "ONLINE" if is_online else "OFFLINE",
@@ -823,7 +826,11 @@ async def post_esp32_telemetry(request: Request):
         esp32_state["ip"] = request.client.host
     esp32_state["status"] = "CONNECTED"
     
-    if "event" in body: esp32_state["event"] = body["event"]
+    if "event" in body:
+        esp32_state["event"] = body["event"]
+        if body["event"] == "NFC_TAP":
+            esp32_state["last_nfc_seq"] = esp32_state.get("last_nfc_seq", 0) + 1
+            esp32_state["event_time"] = time.time()
     if "uid" in body: esp32_state["uid"] = body["uid"]
     if "dist" in body: esp32_state["dist"] = body["dist"]
     if "back_dist" in body: esp32_state["back_dist"] = body["back_dist"]

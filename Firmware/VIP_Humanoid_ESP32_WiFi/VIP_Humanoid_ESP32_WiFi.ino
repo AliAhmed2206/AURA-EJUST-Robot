@@ -26,7 +26,7 @@ String currentServerUrl     = SERVER_BASE_URL;
 
 // ---------- L293D / L298N MOTOR DRIVER ----------
 #define L_IN1 14
-#define L_IN2 27
+#define L_IN2 27 
 #define L_EN  25
 
 #define R_IN1 26
