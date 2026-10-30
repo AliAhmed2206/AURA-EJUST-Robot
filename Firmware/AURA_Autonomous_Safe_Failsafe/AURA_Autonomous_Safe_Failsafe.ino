@@ -108,6 +108,7 @@ void postNFC(bool valid, int id, const String& name) {
     HTTPClient http;
     http.begin(String(SERVER) + "/api/esp32/telemetry");
     http.addHeader("Content-Type", "application/json");
+    http.setConnectTimeout(1500);
     http.setTimeout(1500);
 
     String payload =
@@ -129,6 +130,17 @@ void postNFC(bool valid, int id, const String& name) {
 // 7. NFC READER
 // ======================================================================================
 void checkNFC() {
+    static unsigned long lastDebugPrint = 0;
+    if (millis() - lastDebugPrint > 5000) {
+        lastDebugPrint = millis();
+        byte ver = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+        if (ver == 0x00 || ver == 0xFF) {
+            Serial.println("[RC522] WAITING FOR WIRING - Reader unresponsive (0x" + String(ver, HEX) + ")");
+        } else {
+            Serial.println("[RC522] Active & Scanning (Hold card flat against reader)...");
+        }
+    }
+
     if (!rfid.PICC_IsNewCardPresent()) return;
     if (!rfid.PICC_ReadCardSerial()) return;
 
@@ -237,7 +249,26 @@ void setup() {
     // NFC RC522 initialization
     SPI.begin(NFC_SCK, NFC_MISO, NFC_MOSI, NFC_SS);
     rfid.PCD_Init();
-    Serial.println("RC522 initialized");
+    delay(50);
+    rfid.PCD_SetAntennaGain(MFRC522::RxGain_max); // Set antenna sensitivity to MAX 48dB
+    rfid.PCD_DumpVersionToSerial();               // Official diagnostic dump
+    byte ver = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+    Serial.printf("RC522 firmware version: 0x%02X\n", ver);
+    if (ver == 0x00 || ver == 0xFF) {
+        Serial.println("=================================================");
+        Serial.println("!! ERROR: RC522 HARDWARE NOT DETECTED !!");
+        Serial.println("Please check physical wiring:");
+        Serial.println("  RC522 3.3V  -> ESP32 3V3 (NOT 5V!)");
+        Serial.println("  RC522 GND   -> ESP32 GND");
+        Serial.println("  RC522 SDA/SS-> ESP32 GPIO 5");
+        Serial.println("  RC522 SCK   -> ESP32 GPIO 15");
+        Serial.println("  RC522 MOSI  -> ESP32 GPIO 17");
+        Serial.println("  RC522 MISO  -> ESP32 GPIO 16");
+        Serial.println("  RC522 RST   -> ESP32 GPIO 2");
+        Serial.println("=================================================");
+    } else {
+        Serial.println("[OK] RC522 hardware initialized with MAX 48dB sensitivity!");
+    }
 
     // WiFi initialization
     WiFi.mode(WIFI_STA);
@@ -282,14 +313,22 @@ void loop() {
 
     // 3. Lightweight 3-second heartbeat to keep Wi-Fi telemetry active on AURA HUD
     static unsigned long lastHeartbeat = 0;
-    if (WiFi.status() == WL_CONNECTED && millis() - lastHeartbeat >= 3000) {
+    // Short connect timeout so a blocked/unreachable server can NEVER freeze NFC scanning
+    if (WiFi.status() == WL_CONNECTED && millis() - lastHeartbeat >= 5000) {
         lastHeartbeat = millis();
         HTTPClient http;
         http.begin(String(SERVER) + "/api/esp32/telemetry");
         http.addHeader("Content-Type", "application/json");
-        http.setTimeout(800);
-        http.POST("{\"token\":\"" + String(TOKEN) + "\",\"event\":\"HEARTBEAT\",\"state\":\"MANUAL\"}");
+        http.setConnectTimeout(300);
+        http.setTimeout(300);
+        int hb = http.POST("{\"token\":\"" + String(TOKEN) + "\",\"event\":\"HEARTBEAT\",\"state\":\"MANUAL\"}");
         http.end();
+        static bool lastOk = true;
+        bool ok = (hb == 200);
+        if (ok != lastOk) {
+            Serial.println(ok ? "[HB] Bridge reachable" : "[HB] Bridge UNREACHABLE (code " + String(hb) + ") - check laptop firewall / IP");
+            lastOk = ok;
+        }
     }
 
     // 4. Reconnect WiFi if disconnected

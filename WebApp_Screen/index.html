@@ -5672,21 +5672,18 @@ setInterval(async () => {
           if (data.state.robot_state) hwState.state = data.state.robot_state;
           if (data.state.markers !== undefined) hwState.markers = data.state.markers;
 
-          if (data.state.event && data.state.event !== 'NONE') {
-            if (data.state.event === 'NFC_TAP' && data.state.uid && data.state.uid !== 'NONE') {
-              const seq = data.state.last_nfc_seq || data.state.event_seq || 0;
-              const now = Date.now();
-              const isNewSeq = seq > 0 && seq !== lastHandledNfcSeq;
-              const isTimePassed = (now - lastHandledNfcTime) > 3500;
+          const nfcSeq = data.state.last_nfc_seq || 0;
+          const hasNfcCard = data.state.uid && data.state.uid !== 'NONE';
+          if (nfcSeq > 0 && nfcSeq !== lastHandledNfcSeq && hasNfcCard) {
+            lastHandledNfcSeq = nfcSeq;
+            lastHandledNfcTime = Date.now();
+            hwState.lastNfcUid = data.state.uid;
+            hwState.lastNfcName = data.state.guest || 'VIP Guest';
+            onEsp32({ event: 'NFC_TAP', uid: data.state.uid, name: data.state.guest, valid: true });
+          }
 
-              if (isNewSeq || isTimePassed) {
-                lastHandledNfcSeq = seq;
-                lastHandledNfcTime = now;
-                hwState.lastNfcUid = data.state.uid;
-                hwState.lastNfcName = data.state.guest || 'VIP Guest';
-                onEsp32({ event: 'NFC_TAP', uid: data.state.uid, name: data.state.guest, valid: true });
-              }
-            } else if (data.state.event === 'ARRIVED' && hwState.state !== 'ARRIVED') {
+          if (data.state.event && data.state.event !== 'NONE') {
+            if (data.state.event === 'ARRIVED' && hwState.state !== 'ARRIVED') {
               onEsp32({ event: 'ARRIVED', dest: data.state.dest || 'Theatre' });
             } else if (data.state.event === 'OBSTACLE' && !hwState.lastObstacleActive) {
               hwState.lastObstacleActive = true;

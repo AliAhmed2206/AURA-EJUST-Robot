@@ -824,10 +824,13 @@ async def post_esp32_telemetry(request: Request):
     esp32_state["status"] = "CONNECTED"
     
     if "event" in body:
-        esp32_state["event"] = body["event"]
-        if body["event"] == "NFC_TAP":
+        ev = body["event"]
+        if ev == "NFC_TAP":
+            esp32_state["event"] = "NFC_TAP"
             esp32_state["last_nfc_seq"] = esp32_state.get("last_nfc_seq", 0) + 1
             esp32_state["event_time"] = time.time()
+        elif ev != "HEARTBEAT":
+            esp32_state["event"] = ev
     if "uid" in body: esp32_state["uid"] = body["uid"]
     if "dist" in body: esp32_state["dist"] = body["dist"]
     if "back_dist" in body: esp32_state["back_dist"] = body["back_dist"]
