@@ -842,9 +842,12 @@ async def post_esp32_telemetry(request: Request):
     if "guest" in body: esp32_state["guest"] = body["guest"]
     if "name" in body: esp32_state["guest"] = body["name"]
     
-    # VIP Guest Name Resolution from Registry
+    # Dynamic Guest Name: Prioritize name sent by ESP32 payload
+    esp_name = str(body.get('name') or body.get('guest') or '').strip()
     uid_clean = re.sub(r'[^A-Fa-f0-9]', '', str(body.get('uid', ''))).upper()
-    if uid_clean in VIP_REGISTRY:
+    if esp_name and esp_name != 'NONE' and esp_name != 'UNKNOWN':
+        esp32_state["guest"] = esp_name
+    elif uid_clean in VIP_REGISTRY:
         esp32_state["guest"] = VIP_REGISTRY[uid_clean]
     
     print(f"[ESP32 TELEMETRY] {body}")

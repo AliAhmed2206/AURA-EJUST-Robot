@@ -4337,15 +4337,7 @@ const DEFAULT_VIP_CARDS = {
   '53CA0572420001': { name: 'Prof. Mohamed Gouda',   arName: 'الدكتور محمد جودة' },
   '53BB0572420001': { name: 'Prof. Mohamed Adel',    arName: 'الدكتور محمد عادل' },
   '53D00572420001': { name: 'Prof. Ahmed Abd El-Malek', arName: 'الدكتور أحمد عبد المالك' },
-  // Fallbacks for remaining cards
-  '53B80572420001': { name: 'VIP Guest 14',  arName: 'ضيف الشرف 14' },
-  '53B90572420001': { name: 'VIP Guest 15',  arName: 'ضيف الشرف 15' },
-  '53BA0572420001': { name: 'VIP Guest 16',  arName: 'ضيف الشرف 16' },
-  '53C00572420001': { name: 'VIP Guest 17',  arName: 'ضيف الشرف 17' },
-  '53CB0572420001': { name: 'VIP Guest 18',  arName: 'ضيف الشرف 18' },
-  '53D10572420001': { name: 'Marwan Yasser',   arName: 'مروان ياسر' },
-  '53D20572420001': { name: 'VIP Guest 20',  arName: 'ضيف الشرف 20' },
-  '53E00572420001': { name: 'VIP Guest 21',  arName: 'ضيف الشرف 21' },
+  // Remaining official cards inherit name directly from ESP32 telemetry
   // Legacy simulation test UID
   'A1:B2:C3:D4':   { name: 'Prof. Ahmed Elsabagh', arName: 'الأستاذ الدكتور أحمد الصباغ' }
 };
@@ -5088,7 +5080,7 @@ function onEsp32(raw) {
     const isValid = Boolean(localCard || d.valid === true || hwState.allowAnyNfc);
 
     if (isValid) {
-      const rawGuestName = d.name || (localCard && localCard.name) || ('VIP Guest ' + (d.id || ''));
+      let rawGuestName = (d.name && d.name !== 'UNKNOWN' && d.name !== 'NONE') ? d.name : ((localCard && localCard.name) ? localCard.name : ('VIP Guest ' + (d.id || '')));
       const guestArName = (localCard && localCard.arName) || rawGuestName;
 
       const drName = formatDrGuestName(rawGuestName);
