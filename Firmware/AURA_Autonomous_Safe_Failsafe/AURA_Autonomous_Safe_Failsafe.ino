@@ -5,6 +5,8 @@
 #include <SPI.h>
 #define MFRC522_SPICLOCK 1000000u // 1MHz stable SPI for jumper wires
 #include <MFRC522.h>
+#define CUSTOM_SETTINGS
+#define INCLUDE_GAMEPAD_MODULE
 #include <DabbleESP32.h>
 
 // ======================================================================================
@@ -244,16 +246,15 @@ void checkNFC() {
 }
 
 // ======================================================================================
-// 8. DABBLE GAMEPAD CONTROL (ANALOG JOYSTICK ONLY)
+// 8. DABBLE GAMEPAD CONTROL (ANALOG JOYSTICK & DIGITAL D-PAD)
 // ======================================================================================
 void controlRobot() {
     Dabble.processInput();
 
-    // Read joystick axes (-7 to +7)
+    // 1. Analog joystick mode (-7 to +7)
     int x = GamePad.getXaxisData();
     int y = GamePad.getYaxisData();
 
-    // Analog joystick control (Deadzone: +-1)
     if (abs(x) > 1 || abs(y) > 1) {
         int left  = constrain(y + x, -7, 7) * 255 / 7;
         int right = constrain(y - x, -7, 7) * 255 / 7;
@@ -261,25 +262,23 @@ void controlRobot() {
         return;
     }
 
-    // When joystick is released, stop motors smoothly
-    stopMotors();
-
-    /* ----------------------------------------------------------------------------------
-     * OPTIONAL DIGITAL D-PAD BUTTON CONTROL (COMMENTED OUT AS REQUESTED)
-     * ----------------------------------------------------------------------------------
+    // 2. Digital D-Pad button mode (Up, Down, Left, Right arrows)
     if (GamePad.isUpPressed()) {
-        motors(180, 180);
+        motors(200, 200);   // Forward
+        return;
+    } else if (GamePad.isDownPressed()) {
+        motors(-200, -200); // Backward
+        return;
+    } else if (GamePad.isLeftPressed()) {
+        motors(-180, 180);  // Spin Left
+        return;
+    } else if (GamePad.isRightPressed()) {
+        motors(180, -180);  // Spin Right
+        return;
     }
-    else if (GamePad.isDownPressed()) {
-        motors(-180, -180);
-    }
-    else if (GamePad.isLeftPressed()) {
-        motors(-160, 160);
-    }
-    else if (GamePad.isRightPressed()) {
-        motors(160, -160);
-    }
-    ---------------------------------------------------------------------------------- */
+
+    // 3. When neither joystick nor buttons are pressed, stop motors smoothly
+    stopMotors();
 }
 
 // ======================================================================================
