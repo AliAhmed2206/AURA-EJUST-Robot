@@ -3586,13 +3586,10 @@ async function handleTurn(userText, context) {
   log('heard:', userText);
   caption(userText, true);
 
-  // 0. Vision / Camera query detection: start stream and open corner window automatically
+  // 0. Vision / Camera query detection: start camera stream silently in background WITHOUT opening preview screen over AURA's face
   if (VISION_QUESTION_RE.test(userText)) {
     if (!activeVideoStream) {
       try { await startCameraStream(currentFacingMode); } catch (e) {}
-    }
-    if (!camViewActive) {
-      await openCamera('corner');
     }
     await new Promise(r => setTimeout(r, 260));
     const visionContext = isArabic(userText)
