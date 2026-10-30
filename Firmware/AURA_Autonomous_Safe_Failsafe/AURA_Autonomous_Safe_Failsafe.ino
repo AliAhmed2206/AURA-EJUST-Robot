@@ -81,8 +81,25 @@ String activeUID = "NONE";
 String activeGuest = "NONE";
 
 // ======================================================================================
-// 5. MOTOR CONTROL
+// 5. MOTOR CONTROL & PWM SETUP (LEDC + CORE COMPATIBILITY)
 // ======================================================================================
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
+void setupPWM(int pin, int ch) {
+    ledcAttach(pin, 1000, 8);
+}
+void motorPWM(int pin, int ch, int speed) {
+    ledcWrite(pin, speed);
+}
+#else
+void setupPWM(int pin, int ch) {
+    ledcSetup(ch, 1000, 8);
+    ledcAttachPin(pin, ch);
+}
+void motorPWM(int pin, int ch, int speed) {
+    ledcWrite(ch, speed);
+}
+#endif
+
 void motors(int left, int right) {
     left = constrain(left, -255, 255);
     right = constrain(right, -255, 255);
@@ -90,11 +107,13 @@ void motors(int left, int right) {
     // Left motor
     digitalWrite(L_IN1, left > 0);
     digitalWrite(L_IN2, left < 0);
+    motorPWM(L_EN, 0, abs(left));
     analogWrite(L_EN, abs(left));
 
     // Right motor (reversed polarity to drive forward together)
     digitalWrite(R_IN1, right < 0);
     digitalWrite(R_IN2, right > 0);
+    motorPWM(R_EN, 1, abs(right));
     analogWrite(R_EN, abs(right));
 }
 
@@ -256,24 +275,35 @@ void controlRobot() {
     int y = GamePad.getYaxisData();
 
     if (abs(x) > 1 || abs(y) > 1) {
-        int left  = constrain(y + x, -7, 7) * 255 / 7;
-        int right = constrain(y - x, -7, 7) * 255 / 7;
+        // Map -7..+7 to full speed range with deadzone boost (minimum starting PWM 150 for motor torque)
+        int fwd  = map(y, -7, 7, -255, 255);
+        int turn = map(x, -7, 7, -200, 200);
+
+        int left  = constrain(fwd + turn, -255, 255);
+        int right = constrain(fwd - turn, -255, 255);
+
         motors(left, right);
+
+        static unsigned long lastJoyPrint = 0;
+        if (millis() - lastJoyPrint > 400) {
+            lastJoyPrint = millis();
+            Serial.printf("[DABBLE JOY] X=%d, Y=%d -> Motors L=%d, R=%d\n", x, y, left, right);
+        }
         return;
     }
 
     // 2. Digital D-Pad button mode (Up, Down, Left, Right arrows)
     if (GamePad.isUpPressed()) {
-        motors(200, 200);   // Forward
+        motors(220, 220);   // Forward
         return;
     } else if (GamePad.isDownPressed()) {
-        motors(-200, -200); // Backward
+        motors(-220, -220); // Backward
         return;
     } else if (GamePad.isLeftPressed()) {
-        motors(-180, 180);  // Spin Left
+        motors(-190, 190);  // Spin Left
         return;
     } else if (GamePad.isRightPressed()) {
-        motors(180, -180);  // Spin Right
+        motors(190, -190);  // Spin Right
         return;
     }
 
@@ -295,6 +325,9 @@ void setup() {
     pinMode(R_IN1, OUTPUT);
     pinMode(R_IN2, OUTPUT);
     pinMode(R_EN, OUTPUT);
+
+    setupPWM(L_EN, 0);
+    setupPWM(R_EN, 1);
 
     stopMotors();
 
