@@ -801,6 +801,7 @@ VIP_REGISTRY = {
     "53CA0572420001": "Prof. Mohamed Gouda",
     "53BB0572420001": "Prof. Mohamed Adel",
     "53D00572420001": "Prof. Ahmed Abd El-Malek",
+    "53D10572420001": "Marwan Yasser",
 }
 
 @app.post("/api/esp32/telemetry")

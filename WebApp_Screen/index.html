@@ -4343,7 +4343,7 @@ const DEFAULT_VIP_CARDS = {
   '53BA0572420001': { name: 'VIP Guest 16',  arName: 'ضيف الشرف 16' },
   '53C00572420001': { name: 'VIP Guest 17',  arName: 'ضيف الشرف 17' },
   '53CB0572420001': { name: 'VIP Guest 18',  arName: 'ضيف الشرف 18' },
-  '53D10572420001': { name: 'VIP Guest 19',  arName: 'ضيف الشرف 19' },
+  '53D10572420001': { name: 'Marwan Yasser',   arName: 'مروان ياسر' },
   '53D20572420001': { name: 'VIP Guest 20',  arName: 'ضيف الشرف 20' },
   '53E00572420001': { name: 'VIP Guest 21',  arName: 'ضيف الشرف 21' },
   // Legacy simulation test UID
@@ -5088,7 +5088,7 @@ function onEsp32(raw) {
     const isValid = Boolean(localCard || d.valid === true || hwState.allowAnyNfc);
 
     if (isValid) {
-      const rawGuestName = (localCard && localCard.name) || d.name || ('VIP Guest ' + (d.id || ''));
+      const rawGuestName = d.name || (localCard && localCard.name) || ('VIP Guest ' + (d.id || ''));
       const guestArName = (localCard && localCard.arName) || rawGuestName;
 
       const drName = formatDrGuestName(rawGuestName);
