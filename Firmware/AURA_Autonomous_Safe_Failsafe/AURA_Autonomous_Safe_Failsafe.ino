@@ -106,12 +106,6 @@ void postNFC(bool valid, int id, const String& name) {
         return;
     }
 
-    HTTPClient http;
-    http.begin(String(SERVER) + "/api/esp32/telemetry");
-    http.addHeader("Content-Type", "application/json");
-    http.setConnectTimeout(1500);
-    http.setTimeout(1500);
-
     String payload =
         "{\"token\":\"" + String(TOKEN) +
         "\",\"event\":\"NFC_TAP\"" +
@@ -122,9 +116,26 @@ void postNFC(bool valid, int id, const String& name) {
         "\",\"valid\":" + String(valid ? "true" : "false") +
         ",\"id\":" + String(id) + "}";
 
-    int responseCode = http.POST(payload);
-    Serial.printf("Server response: %d\n", responseCode);
-    http.end();
+    // Retry up to 3 times — breadboard WiFi can drop a single attempt
+    for (int attempt = 1; attempt <= 3; attempt++) {
+        HTTPClient http;
+        http.setReuse(false);  // Force clean TCP socket each attempt
+        http.begin(String(SERVER) + "/api/esp32/telemetry");
+        http.addHeader("Content-Type", "application/json");
+        http.setConnectTimeout(2500);
+        http.setTimeout(2500);
+
+        int rc = http.POST(payload);
+        http.end();
+
+        Serial.printf("[NFC POST] Attempt %d/3 -> %d\n", attempt, rc);
+        if (rc == 200) {
+            Serial.println("[NFC POST] SUCCESS - Bridge received card scan!");
+            return;
+        }
+        delay(200);  // Brief pause before retry
+    }
+    Serial.println("[NFC POST] FAILED after 3 attempts - check laptop firewall/IP");
 }
 
 // ======================================================================================
