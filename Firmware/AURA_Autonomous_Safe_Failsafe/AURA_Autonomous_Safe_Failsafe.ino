@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <SPI.h>
+#define MFRC522_SPICLOCK 1000000u // 1MHz stable SPI for jumper wires
 #include <MFRC522.h>
 #include <DabbleESP32.h>
 
@@ -131,14 +132,31 @@ void postNFC(bool valid, int id, const String& name) {
 // ======================================================================================
 void checkNFC() {
     static unsigned long lastDebugPrint = 0;
+    static bool wasDisconnected = true;
+    
+    byte ver = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+    bool readerOk = (ver != 0x00 && ver != 0xFF);
+
+    if (!readerOk) {
+        wasDisconnected = true;
+        if (millis() - lastDebugPrint > 2500) {
+            lastDebugPrint = millis();
+            Serial.printf("[RC522] ?? WIRE LOOSE (0x%02X) - Press/wiggle 3.3V, GND, or MISO (GPIO 16)!\n", ver);
+        }
+        // Auto-reinitialize as soon as contact is restored
+        rfid.PCD_Init();
+        return;
+    }
+
+    if (wasDisconnected) {
+        wasDisconnected = false;
+        rfid.PCD_SetAntennaGain(MFRC522::RxGain_max);
+        Serial.printf("[RC522] ? CONTACT RESTORED (Firmware: 0x%02X) - READY TO SCAN!\n", ver);
+    }
+
     if (millis() - lastDebugPrint > 5000) {
         lastDebugPrint = millis();
-        byte ver = rfid.PCD_ReadRegister(MFRC522::VersionReg);
-        if (ver == 0x00 || ver == 0xFF) {
-            Serial.println("[RC522] WAITING FOR WIRING - Reader unresponsive (0x" + String(ver, HEX) + ")");
-        } else {
-            Serial.println("[RC522] Active & Scanning (Hold card flat against reader)...");
-        }
+        Serial.printf("[RC522] Active & Scanning OK (0x%02X) - Hold card against reader...\n", ver);
     }
 
     if (!rfid.PICC_IsNewCardPresent()) return;
@@ -247,6 +265,7 @@ void setup() {
     stopMotors();
 
     // NFC RC522 initialization
+        pinMode(NFC_MISO, INPUT_PULLUP); // Prevent floating MISO line
     SPI.begin(NFC_SCK, NFC_MISO, NFC_MOSI, NFC_SS);
     rfid.PCD_Init();
     delay(50);
