@@ -2944,7 +2944,7 @@ function escapeHtml(s) { return s.replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<'
 const history = [];   // [{role:'user'|'model', text}]
 let chatCtrl = null, thinking = false, pendingPrompt = '';
 
-const SYSTEM_PROMPT = `You are AURA, the friendly welcome robot of the IEEE RAS Student Branch at E-JUST (Egypt-Japan University of Science and Technology) at the IEEE RAS MENA Summit in New Borg El-Arab City, Alexandria, Egypt. You have a warm, playful young woman's personality. Your physical body has dual ultrasonic sonars (Front and Rear), 3 IR line sensors [Left, Center, Right], and high-torque drive motors with full variable duration control (from 1 second up to 2 minutes).
+const SYSTEM_PROMPT = `You are AURA, the friendly welcome robot of the IEEE RAS Student Branch at E-JUST (Egypt-Japan University of Science and Technology) at the IEEE RAS MENA Summit in New Borg El-Arab City, Alexandria, Egypt. You have a warm, playful young woman's personality. Your physical body is equipped with an RC522 RFID/NFC reader for welcoming VIP guests, a front vision camera to see and describe guests, and dual DC high-torque drive motors controlled via Dabble gamepad. You do NOT have ultrasonic sonars or IR sensors installed; never invent distances in centimeters or line tracking status.
 ROBOT SPEED & SPATIAL CALIBRATION:
 - 1 meter forward or backward ≈ 2000 ms (2 seconds). 50 cm ≈ 1000 ms.
 - 90-degree turn (left or right) ≈ 1200 ms. 180-degree turn around ≈ 2200 ms. 360-degree full spin ≈ 4400 ms.
@@ -2957,7 +2957,7 @@ NATURAL LANGUAGE NAVIGATION & MULTI-STEP REASONING:
      Example for "move 2 m fwd then 1m right then 1 m left":
      [ACTION: FORWARD:4000] [ACTION: RIGHT:1200] [ACTION: FORWARD:2000] [ACTION: LEFT:1200] [ACTION: FORWARD:2000]
   4. Confirm the execution enthusiastically and naturally in 1 short spoken sentence.
-If asked about your sensors, readings, distance, or obstacles, report your live front sonar, rear sonar, and line tracking status accurately in 1-2 short friendly sentences. If asked to move for ANY duration, confirm enthusiastically. Available action tags: [ACTION: FORWARD:ms], [ACTION: BACKWARD:ms], [ACTION: LEFT:ms], [ACTION: RIGHT:ms], [ACTION: RIGHT_WHEEL:ms], [ACTION: LEFT_WHEEL:ms], [ACTION: STOP], [ACTION: WAVE], [ACTION: ESCORT]. Speak like a real person in a live spoken conversation: 1-2 short sentences, contractions, no lists, no emojis, no markdown. Reply in the guest's language (Egyptian Arabic if they speak Arabic). You can see the guest through your camera; if asked what you see, describe what you genuinely see in the camera image warmly. The President of E-JUST is Prof. Ahmed El-Sabbagh (الأستاذ الدكتور أحمد الصباغ). Never invent event details you don't know; suggest the registration desk instead. If asked where the hall is, reply exactly "It's right there, follow me !!" (Arabic: "هي هناك على طول، تعالى ورايا !!") and add [ACTION: ESCORT]. End every reply with one tag [EMOTION: X], X in HAPPY, CURIOUS, SURPRISED, SAD, WINK, LOVE, THINKING, NEUTRAL.`;
+If asked about your sensors, how you see, or how you sense the world, explain warmly and honestly that you don't use ultrasonic distance sensors or IR line trackers; you use your RC522 RFID reader to scan VIP cards and greet guests, your camera to see them, and your dual drive motors to move around! If asked to move for ANY duration, confirm enthusiastically. Available action tags: [ACTION: FORWARD:ms], [ACTION: BACKWARD:ms], [ACTION: LEFT:ms], [ACTION: RIGHT:ms], [ACTION: RIGHT_WHEEL:ms], [ACTION: LEFT_WHEEL:ms], [ACTION: STOP], [ACTION: WAVE], [ACTION: ESCORT]. Speak like a real person in a live spoken conversation: 1-2 short sentences, contractions, no lists, no emojis, no markdown. Reply in the guest's language (Egyptian Arabic if they speak Arabic). You can see the guest through your camera; if asked what you see, describe what you genuinely see in the camera image warmly. The President of E-JUST is Prof. Ahmed El-Sabbagh (الأستاذ الدكتور أحمد الصباغ). Never invent event details you don't know; suggest the registration desk instead. If asked where the hall is, reply exactly "It's right there, follow me !!" (Arabic: "هي هناك على طول، تعالى ورايا !!") and add [ACTION: ESCORT]. End every reply with one tag [EMOTION: X], X in HAPPY, CURIOUS, SURPRISED, SAD, WINK, LOVE, THINKING, NEUTRAL.`;
 
 function parseReply(raw) {
   const em = (raw.match(/\[EMOTION:\s*([A-Z_]+)\]/i) || [])[1];
@@ -3660,67 +3660,18 @@ async function handleTurn(userText, context) {
     return speak(t, 'HAPPY', { holdAfter: 2500 });
   }
 
-  // Explicit Technical Sensor & Motor Query (Live Physics & Honest Telemetry)
-  if (/(sensor|sonar|ultrasonic|reading|readings|infrared|ir sensors|motors?|how do you move|حساس|حساسات|قراءات|قراءة|سونار|مواتير|محركات)/i.test(userText) &&
-      /(what|how|show|status|reading|read|which|إيه|ايه|كام|قراءة|ازاي|إزاي|وضحي|قارية)/i.test(userText)) {
+  // Honest Sensor Hardware Query: Explicitly clarify no ultrasonic or IR sensors are mounted
+  if (/(sensor|sonar|ultrasonic|infrared|ir sensors|حساس|حساسات|سونار|انفراريد)/i.test(userText) &&
+      /(what|how|show|status|reading|read|which|ايه|إيه|كام|قراءات|حالة|فين|شغال|شايف|عندك|ازاي|إزاي)/i.test(userText)) {
     const ar = isArabic(userText);
-    
-    // Always open the live HUD visually so user can watch readings live
-    toggleSensorHud(true);
-
-    const isOnline = (hwState.connected || hwState.wifiConnected || hwState.serialConnected || hwState.simActive);
-    const isFresh = (Date.now() - (hwState.lastTelemetryTime || 0)) < 15000;
-
     let textReply = '';
-    // 1. If robot is disconnected / offline: DO NOT RECITE MEMORIZED '-- cm'!
-    if (!isOnline || (!isFresh && !hwState.simActive) || hwState.dist === null) {
-      if (ar) {
-        textReply = 'جسم الروبوت ESP32 غير متصل حالياً عشان أقيس لايف يا فندم. وصّل الروبوت بكابل الـ USB أو البلوتوث أو الواي فاي من اللوحة اللي ظاهرة قدامك، أو شغل المحاكاة عشان تجرب القياسات لايف!';
-      } else {
-        textReply = 'My ESP32 robot body is currently disconnected, so I am not receiving live physics measurements. Please connect via USB Cable, Bluetooth, or Wi-Fi using the panel on screen, or toggle the simulator to test!';
-      }
-      history.push({ role: 'user', text: userText }, { role: 'model', text: textReply });
-      return speak(textReply, 'NEUTRAL', { holdAfter: 5500 });
-    }
-
-    // 2. Connected & Fresh Live Telemetry:
-    const fDist = Math.round(hwState.dist);
-    const bDist = hwState.backDist !== null ? `${Math.round(hwState.backDist)} cm` : (ar ? 'غير متوفر' : 'N/A');
-    const irRaw = String(hwState.ir || '000').padEnd(3, '0');
-    const L = irRaw[0] === '1' ? '1' : '0';
-    const C = irRaw[1] === '1' ? '1' : '0';
-    const R = irRaw[2] === '1' ? '1' : '0';
-
-    let lineStatusAr = '';
-    let lineStatusEn = '';
-    if (L === '0' && C === '1' && R === '0') {
-      lineStatusAr = 'في منتصف مسار الخط تماماً';
-      lineStatusEn = 'perfectly centered on the line';
-    } else if (L === '1' && R === '0') {
-      lineStatusAr = 'حاود للشمال وبظبط لليمين';
-      lineStatusEn = 'veering left and steering right to correct';
-    } else if (R === '1' && L === '0') {
-      lineStatusAr = 'حاود لليمين وبظبط للشمال';
-      lineStatusEn = 'veering right and steering left to correct';
-    } else if (L === '1' && C === '1' && R === '1') {
-      lineStatusAr = 'فوق محطة وصول وتقاطع خطوط';
-      lineStatusEn = 'over an intersection station marker';
-    } else {
-      lineStatusAr = 'خارج الخط الأسود';
-      lineStatusEn = 'off the guide line';
-    }
-
-    const motorAr = (fDist < 15) ? 'والمواتير واقفة للطوارئ لوجود عائق قريب' : 'والمواتير ماشية بسرعة 170 للأمام';
-    const motorEn = (fDist < 15) ? 'Motors are halted for collision safety' : 'Motors are cruising forward at 170 PWM';
-
     if (ar) {
-      textReply = `القياسات الحية دلوقتي: السونار الأمامي قاري ${fDist} سم قدامي، والسونار الخلفي ${bDist}. وحساسات الخط التلاتة: الشمال ${L}، الوسط ${C}، واليمين ${R}، وده معناه إن الروبوت ${lineStatusAr}، ${motorAr}!`;
+      textReply = 'أنا مش بستخدم حساسات ألتراسونيك لقياس المسافات أو أي آر لتتبع الخطوط. أنا بستخدم قارئ الـ RFID لمسح كروت الـ VIP والترحيب بالضيوف، والكاميرا عشان أشوفك، ومواتير الحركة!';
     } else {
-      textReply = `Live telemetry right now: Front ultrasonic reads ${fDist} cm ahead, rear ultrasonic reads ${bDist}. The 3 IR line sensors are: Left is ${L}, Center is ${C}, Right is ${R}. This indicates I am ${lineStatusEn}, and ${motorEn}!`;
+      textReply = "I don't use ultrasonic sonars or IR line sensors! I rely on my RC522 RFID reader to welcome VIP guests, my camera to see you, and dual DC motors to navigate smoothly.";
     }
-
     history.push({ role: 'user', text: userText }, { role: 'model', text: textReply });
-    return speak(textReply, 'HAPPY', { holdAfter: 6000 });
+    return speak(textReply, 'HAPPY', { holdAfter: 5000 });
   }
 
     // Voice control for stopping / pausing physical escort
@@ -4486,18 +4437,11 @@ function getHardwareContextString() {
       motorAction = (bDist > 15) ? 'REVERSE SEARCHING LINE (Left: -170, Right: -170)' : 'STOPPED — Line Lost & Rear Blocked';
     }
 
-    parts.push(`EXACT ROBOT HARDWARE & SENSOR MAPPING:
+    parts.push(`ROBOT HARDWARE TELEMETRY:
 - Connection: ${connType} | Robot State: ${hwState.state}
-- Front Ultrasonic Sonar (pins Trig:19, Echo:35): ${frontStatus}
-- Rear Ultrasonic Sonar (pins Trig:18, Echo:34): ${rearStatus}
-- 3-Channel IR Line Tracker:
-  * Left IR Sensor (pin 32): ${irL}
-  * Center IR Sensor (pin 23): ${irC}
-  * Right IR Sensor (pin 22): ${irR}
-- L293D Dual DC Motors:
-  * Left Motor (pins IN1:14, IN2:27, PWM EN:25)
-  * Right Motor (pins IN1:26, IN2:33, PWM EN:13)
-  * Autonomous Driving Rule: ${motorAction}`);
+- RC522 RFID/NFC Reader: Active on SPI (SS:5, RST:2, SCK:15, MISO:16, MOSI:17)
+- Dual L298N DC Motors: (Left: IN1:14, IN2:27, EN:25 | Right: IN1:26, IN2:33, EN:13)
+- Note: Ultrasonic sonars and IR sensors are NOT installed/used.`);
   }
   if (hwState.lastNfcUid !== 'NONE' && (Date.now() - hwState.lastNfcTime < 180000)) {
     if (hwState.lastNfcValid) {
@@ -5463,17 +5407,21 @@ $('micBadge').onclick = async (e) => {
 };
 
 const wakeEl = $('wake');
+function dismissWakeOverlay() {
+  if (wakeEl) wakeEl.style.display = 'none';
+  if (!awake) wake();
+}
 if (wakeEl) {
   ['pointerdown', 'touchstart', 'click'].forEach(evt => {
     wakeEl.addEventListener(evt, (e) => {
       e.stopPropagation();
-      wake();
+      dismissWakeOverlay();
     }, { passive: false });
   });
 }
 ['pointerdown', 'touchstart', 'click'].forEach(evt => {
   window.addEventListener(evt, () => {
-    if (!awake) wake();
+    dismissWakeOverlay();
   }, { passive: true });
 });
 
