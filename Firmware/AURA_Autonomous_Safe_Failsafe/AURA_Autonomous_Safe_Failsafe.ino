@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <SPI.h>
 #define MFRC522_SPICLOCK 1000000u // 1MHz stable SPI for jumper wires
 #include <MFRC522.h>
@@ -12,7 +13,9 @@
 const char* WIFI_SSID     = "Ali";
 const char* WIFI_PASSWORD = "12345679";
 const char* TOKEN         = "AURA-EJUST-VIP-2026-TOKEN";
-const char* SERVER        = "http://10.103.194.178:8080";
+const char* SERVER_LAN    = "http://10.103.194.178:8080";
+const char* SERVER_TUNNEL = "https://endless-handmade-where-essentially.trycloudflare.com";
+bool useTunnel = false;  // Auto-switches to true if LAN fails
 
 // ======================================================================================
 // 2. L298N DUAL MOTOR DRIVER PINS
@@ -98,8 +101,31 @@ void stopMotors() {
 }
 
 // ======================================================================================
-// 6. WIFI TELEMETRY (AURA GUEST GREETING)
+// 6. WIFI TELEMETRY (AURA GUEST GREETING) — Auto LAN→Tunnel failover
 // ======================================================================================
+
+// Helper: POST JSON to a URL (HTTP or HTTPS). Returns HTTP status or negative on error.
+int postJSON(const String& url, const String& payload) {
+    HTTPClient http;
+    http.setReuse(false);
+
+    if (url.startsWith("https://")) {
+        // HTTPS via Cloudflare tunnel — skip cert verification (trusted tunnel)
+        static WiFiClientSecure sslClient;
+        sslClient.setInsecure();  // Cloudflare cert — safe for our tunnel
+        http.begin(sslClient, url);
+    } else {
+        http.begin(url);
+    }
+    http.addHeader("Content-Type", "application/json");
+    http.setConnectTimeout(4000);
+    http.setTimeout(4000);
+
+    int rc = http.POST(payload);
+    http.end();
+    return rc;
+}
+
 void postNFC(bool valid, int id, const String& name) {
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("WiFi disconnected - telemetry skipped");
@@ -116,26 +142,24 @@ void postNFC(bool valid, int id, const String& name) {
         "\",\"valid\":" + String(valid ? "true" : "false") +
         ",\"id\":" + String(id) + "}";
 
-    // Retry up to 3 times — breadboard WiFi can drop a single attempt
-    for (int attempt = 1; attempt <= 3; attempt++) {
-        HTTPClient http;
-        http.setReuse(false);  // Force clean TCP socket each attempt
-        http.begin(String(SERVER) + "/api/esp32/telemetry");
-        http.addHeader("Content-Type", "application/json");
-        http.setConnectTimeout(2500);
-        http.setTimeout(2500);
+    // Try LAN first (fast), then fall back to Cloudflare tunnel (reliable)
+    const char* targets[] = { SERVER_LAN, SERVER_TUNNEL };
+    const char* labels[]  = { "LAN", "TUNNEL" };
 
-        int rc = http.POST(payload);
-        http.end();
-
-        Serial.printf("[NFC POST] Attempt %d/3 -> %d\n", attempt, rc);
-        if (rc == 200) {
-            Serial.println("[NFC POST] SUCCESS - Bridge received card scan!");
-            return;
+    for (int t = (useTunnel ? 1 : 0); t < 2; t++) {
+        String url = String(targets[t]) + "/api/esp32/telemetry";
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            int rc = postJSON(url, payload);
+            Serial.printf("[NFC POST] %s attempt %d -> %d\n", labels[t], attempt, rc);
+            if (rc == 200) {
+                Serial.printf("[NFC POST] SUCCESS via %s!\n", labels[t]);
+                if (t == 1) useTunnel = true;  // Remember tunnel works
+                return;
+            }
+            delay(250);
         }
-        delay(200);  // Brief pause before retry
     }
-    Serial.println("[NFC POST] FAILED after 3 attempts - check laptop firewall/IP");
+    Serial.println("[NFC POST] FAILED via both LAN and TUNNEL");
 }
 
 // ======================================================================================
@@ -341,22 +365,24 @@ void loop() {
     // 2. Control robot via Dabble analog joystick
     controlRobot();
 
-    // 3. Lightweight 3-second heartbeat to keep Wi-Fi telemetry active on AURA HUD
+    // 3. Lightweight heartbeat to keep Wi-Fi telemetry active on AURA HUD
     static unsigned long lastHeartbeat = 0;
-    // Short connect timeout so a blocked/unreachable server can NEVER freeze NFC scanning
     if (WiFi.status() == WL_CONNECTED && millis() - lastHeartbeat >= 5000) {
         lastHeartbeat = millis();
-        HTTPClient http;
-        http.begin(String(SERVER) + "/api/esp32/telemetry");
-        http.addHeader("Content-Type", "application/json");
-        http.setConnectTimeout(300);
-        http.setTimeout(300);
-        int hb = http.POST("{\"token\":\"" + String(TOKEN) + "\",\"event\":\"HEARTBEAT\",\"state\":\"MANUAL\"}");
-        http.end();
+        String hbPayload = "{\"token\":\"" + String(TOKEN) + "\",\"event\":\"HEARTBEAT\",\"state\":\"MANUAL\"}";
+        String url = String(useTunnel ? SERVER_TUNNEL : SERVER_LAN) + "/api/esp32/telemetry";
+        int hb = postJSON(url, hbPayload);
         static bool lastOk = true;
         bool ok = (hb == 200);
+        if (!ok && !useTunnel) {
+            // LAN failed — try tunnel for heartbeat too
+            url = String(SERVER_TUNNEL) + "/api/esp32/telemetry";
+            hb = postJSON(url, hbPayload);
+            ok = (hb == 200);
+            if (ok) { useTunnel = true; Serial.println("[HB] Switched to TUNNEL mode"); }
+        }
         if (ok != lastOk) {
-            Serial.println(ok ? "[HB] Bridge reachable" : "[HB] Bridge UNREACHABLE (code " + String(hb) + ") - check laptop firewall / IP");
+            Serial.println(ok ? "[HB] Bridge reachable" : "[HB] Bridge UNREACHABLE - check laptop");
             lastOk = ok;
         }
     }
