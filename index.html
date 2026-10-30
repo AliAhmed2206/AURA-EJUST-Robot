@@ -4363,7 +4363,7 @@ const DEFAULT_VIP_CARDS = {
 };
 let vipCards = { ...DEFAULT_VIP_CARDS };
 try {
-  const savedCards = JSON.parse(store.get('vip_cards_v1', '{}'));
+  const savedCards = JSON.parse(store.get('vip_cards_v2', '{}'));
   if (savedCards && typeof savedCards === 'object') vipCards = { ...DEFAULT_VIP_CARDS, ...savedCards };
 } catch (e) {}
 
@@ -5019,7 +5019,7 @@ function registerCardUid(uid, name, dest, markers = 1) {
     arDest: dest.includes('Theatre') ? 'المسرح الكبير' : dest.includes('Lab') ? 'معمل الروبوتات والقاعة' : 'قاعة المؤتمرات الرئيسية',
     markers: Number(markers) || 1
   };
-  store.set('vip_cards_v1', JSON.stringify(vipCards));
+  store.set('vip_cards_v2', JSON.stringify(vipCards));
   updateHwUi();
   log('Registered NFC UID:', uid, '->', name, dest);
 }
@@ -5078,7 +5078,10 @@ function onEsp32(raw) {
     const localCard = findVipCard(uid);
     const isValid = Boolean(localCard || d.valid === true || hwState.allowAnyNfc);
 
-    if (isValid) {
+        if (isValid) {
+      if (rawGuestName && !/^VIP Guest/i.test(rawGuestName)) {
+        vipCards[uid] = { name: rawGuestName, arName: rawGuestName };
+      }
       const guestName = (localCard && localCard.name) || d.name || ('VIP Guest ' + (d.id || ''));
       const guestArName = (localCard && localCard.arName) || guestName;
 
